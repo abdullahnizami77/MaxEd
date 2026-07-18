@@ -226,23 +226,42 @@ def test_c_amt_subject_accepts_amount_or_open_and_renders_both_on_fail():
     assert bad.check_result.actual == "$1,250.00"
 
 
-def test_c_amt_without_subject_matches_documents_and_derived_totals():
+def test_c_amt_without_subject_is_context_strict():
+    """Hardened after the adversarial red team: a bare amount matching some
+    unrelated ledger row is not support. Net balance passes; received-context
+    amounts must match a payment; everything else escalates as unverifiable."""
     ledger = make_ledger()
     net = make_claim("r-040", ClaimType.C_AMT, "That leaves $2,250.00.", "$2,250.00")
     credit = make_claim("r-041", ClaimType.C_AMT, "A credit of $150.00.", "$150.00")
     word_form = make_claim(
         "r-042", ClaimType.C_AMT, "We received 1,200 dollars.", "1,200 dollars"
     )
+    received_wrong = make_claim(
+        "r-044", ClaimType.C_AMT, "We received $2,250.00 from you.", "$2,250.00"
+    )
+    remit_wrong = make_claim(
+        "r-045", ClaimType.C_AMT, "Please remit $1,200.00 today.", "$1,200.00"
+    )
     nothing = make_claim("r-043", ClaimType.C_AMT, "A charge of $9.99.", "$9.99")
-    run_code_checks([net, credit, word_form, nothing], ledger)
+    run_code_checks(
+        [net, credit, word_form, received_wrong, remit_wrong, nothing], ledger
+    )
     assert net.check_result.status is CheckStatus.PASS
     assert "NET" in net.check_result.cited_records
-    assert credit.check_result.status is CheckStatus.PASS
-    assert "CM-0031" in credit.check_result.cited_records
-    assert word_form.check_result.status is CheckStatus.PASS
+    # A document figure in a plain sentence is no longer blessed by
+    # coincidence: it escalates for a human to attribute.
+    assert credit.check_result.status is CheckStatus.UNVERIFIABLE
+    assert word_form.check_result.status is CheckStatus.PASS, (
+        "received-context amount matching a real payment passes"
+    )
     assert "PMT-0208" in word_form.check_result.cited_records
-    assert nothing.check_result.status is CheckStatus.FAIL
-    assert nothing.check_result.expected == "$2,250.00", "net balance for orientation"
+    assert received_wrong.check_result.status is CheckStatus.FAIL, (
+        "received-context amount matching no payment is materially false"
+    )
+    assert remit_wrong.check_result.status is CheckStatus.FAIL, (
+        "a payment request for anything but the net balance is materially false"
+    )
+    assert nothing.check_result.status is CheckStatus.UNVERIFIABLE
 
 
 def test_c_sum_flags_the_open_invoice_total_misreading():
@@ -279,7 +298,9 @@ def test_c_status_maps_words_and_requires_a_subject():
     assert wrong.check_result.status is CheckStatus.FAIL
     assert wrong.check_result.expected == "outstanding"
     assert wrong.check_result.cited_records == ["INV-1012"]
-    assert orphan.check_result.status is CheckStatus.FAIL
+    # A status with no resolvable document is unverifiable (escalates), not
+    # provably false: hardened after the adversarial review.
+    assert orphan.check_result.status is CheckStatus.UNVERIFIABLE
     assert orphan.check_result.detail == "status claim with no resolvable document"
 
 

@@ -127,6 +127,31 @@ class CompletesStructured(Protocol):
 # ---------------------------------------------------------------------------
 
 
+_OPEN_CONTEXT_RE = re.compile(
+    r"\b(?:open|remaining|outstanding|unpaid|still\s+due|due|owe[sd]?|left)\b",
+    re.IGNORECASE,
+)
+_REMIT_CONTEXT_RE = re.compile(
+    r"\b(?:remit|send|wire|transfer|please\s+pay|pay\s+us|kindly\s+(?:send|wire|pay))\b",
+    re.IGNORECASE,
+)
+_RECEIVED_CONTEXT_RE = re.compile(
+    r"\b(?:received?|we\s+got|thank\s+you\s+for\s+your\s+payment)\b",
+    re.IGNORECASE,
+)
+
+
+def _no_subject_context(span: str) -> str:
+    """Classify what an unattributed amount sentence asserts."""
+    remit = bool(_REMIT_CONTEXT_RE.search(span))
+    received = bool(_RECEIVED_CONTEXT_RE.search(span))
+    if remit and not received:
+        return "remit"
+    if received and not remit:
+        return "received"
+    return "plain"
+
+
 def _parse_amount(token: str) -> Cents:
     """Resolve an amount token to integer cents through one seam.
 
@@ -233,13 +258,24 @@ def check_amount(claim: Claim, ledger: Ledger) -> CheckResult:
                 actual=shown,
                 detail=f"amount attached to {claim.subject_id}, which is not in the ledger",
             )
+        # When the sentence asserts an open/remaining/due amount, only the
+        # derived open (or unapplied) figure is acceptable: telling a client
+        # a partially-paid invoice is "open for" its full original amount is
+        # materially misleading even though the number appears in the ledger.
+        asserts_open = bool(_OPEN_CONTEXT_RE.search(claim.span))
         if kind == "invoice":
-            acceptable = _dedup(
-                [cents(doc.amount_cents), derive.open_amount(ledger, doc.id)]
+            open_amt = derive.open_amount(ledger, doc.id)
+            acceptable = (
+                _dedup([open_amt])
+                if asserts_open
+                else _dedup([cents(doc.amount_cents), open_amt])
             )
         else:
-            acceptable = _dedup(
-                [cents(doc.amount_cents), derive.unapplied_amount(ledger, doc.id)]
+            unapplied = derive.unapplied_amount(ledger, doc.id)
+            acceptable = (
+                _dedup([unapplied])
+                if asserts_open
+                else _dedup([cents(doc.amount_cents), unapplied])
             )
         if claimed in acceptable:
             return CheckResult(
@@ -256,33 +292,82 @@ def check_amount(claim: Claim, ledger: Ledger) -> CheckResult:
             detail=f"amount does not match {claim.subject_id}",
         )
 
-    matches: list[str] = []
-    for inv in ledger.invoices:
-        if claimed in (cents(inv.amount_cents), derive.open_amount(ledger, inv.id)):
-            matches.append(inv.id)
-    for pay in ledger.payments:
-        if claimed in (cents(pay.amount_cents), derive.unapplied_amount(ledger, pay.id)):
-            matches.append(pay.id)
-    for cm in ledger.credit_memos:
-        if claimed in (cents(cm.amount_cents), derive.unapplied_amount(ledger, cm.id)):
-            matches.append(cm.id)
-    for label, total_fn in _TOTAL_LABELS:
-        if claimed == total_fn(ledger):
-            matches.append(label)
-    if matches:
+    # No subject: the sentence attaches this amount to nothing checkable, so
+    # what it asserts decides how strict we are. A coincidental match against
+    # some unrelated ledger row is NOT support (the adversarial red team
+    # walked materially wrong drafts through exactly that leniency).
+    net = derive.net_balance(ledger)
+    context = _no_subject_context(claim.span)
+    if context == "remit":
+        # The draft is telling the client what to pay: only the net balance
+        # is a defensible unattributed figure.
+        if claimed == net:
+            return CheckResult(
+                status=CheckStatus.PASS,
+                expected=shown,
+                actual=shown,
+                cited_records=[NET_LABEL],
+            )
+        return CheckResult(
+            status=CheckStatus.FAIL,
+            expected=render(net),
+            actual=shown,
+            cited_records=[NET_LABEL],
+            detail="asks the client to pay an amount that is not the net balance",
+        )
+    if context == "received":
+        # The draft asserts money came in: the figure must match a payment,
+        # an unapplied payment amount, or the total received.
+        acceptable: list[Cents] = []
+        for pay in ledger.payments:
+            acceptable.append(cents(pay.amount_cents))
+            acceptable.append(derive.unapplied_amount(ledger, pay.id))
+        acceptable.append(cents(sum(p.amount_cents for p in ledger.payments)))
+        matched = [
+            pay.id
+            for pay in ledger.payments
+            if claimed
+            in (cents(pay.amount_cents), derive.unapplied_amount(ledger, pay.id))
+        ]
+        if claimed in _dedup(acceptable):
+            return CheckResult(
+                status=CheckStatus.PASS,
+                expected=shown,
+                actual=shown,
+                cited_records=matched or ["PAYMENTS-TOTAL"],
+            )
+        return CheckResult(
+            status=CheckStatus.FAIL,
+            expected="a recorded payment amount",
+            actual=shown,
+            detail="asserts a received amount matching no payment on the ledger",
+        )
+    # Plain context: an unattributed figure. Restating the net balance is
+    # fine; restating the open-invoice total is the classic ignores-unapplied
+    # misreading; anything else is unverifiable and escalates (I11 posture),
+    # never silently passed on a coincidental match.
+    if claimed == net:
         return CheckResult(
             status=CheckStatus.PASS,
             expected=shown,
             actual=shown,
-            cited_records=matches,
+            cited_records=[NET_LABEL],
+        )
+    open_total = derive.open_invoice_total(ledger)
+    if claimed == open_total and open_total != net:
+        return CheckResult(
+            status=CheckStatus.FAIL,
+            expected=render(net),
+            actual=shown,
+            cited_records=[NET_LABEL],
+            detail="states the open-invoice total and ignores unapplied cash or credits",
         )
     return CheckResult(
-        status=CheckStatus.FAIL,
-        expected=render(derive.net_balance(ledger)),
+        status=CheckStatus.UNVERIFIABLE,
         actual=shown,
         detail=(
-            "amount matches no document amount, open amount, unapplied amount,"
-            " or derived total"
+            "amount is attached to no document and asserts no checkable total;"
+            " escalated rather than matched against unrelated ledger figures"
         ),
     )
 
@@ -307,6 +392,23 @@ def check_sum(claim: Claim, ledger: Ledger) -> CheckResult:
         )
     open_total = derive.open_invoice_total(ledger)
     if claimed == open_total and open_total != net:
+        # A subtotal explicitly predicated of the invoices is a true
+        # statement ("the two open invoices total $8,450.00") and passes;
+        # the same figure presented as the account balance is the classic
+        # ignores-unapplied misreading and fails.
+        if re.search(r"\binvoices?\b", claim.span, re.IGNORECASE):
+            open_ids = [
+                inv.id
+                for inv in ledger.invoices
+                if derive.open_amount(ledger, inv.id) > 0
+            ]
+            return CheckResult(
+                status=CheckStatus.PASS,
+                expected=render(claimed),
+                actual=render(claimed),
+                cited_records=open_ids,
+                detail="a true open-invoice subtotal, distinct from the net balance",
+            )
         detail = "states the open-invoice total and ignores unapplied cash or credits"
     else:
         detail = "does not match the computed balance"
@@ -322,17 +424,20 @@ def check_sum(claim: Claim, ledger: Ledger) -> CheckResult:
 def check_status(claim: Claim, ledger: Ledger) -> CheckResult:
     """C-STATUS: the claimed status word matches the derived invoice status."""
     if not claim.subject_id:
+        # A status asserted of no resolvable document is not provably wrong,
+        # it is unverifiable: escalate to a human rather than condemn a
+        # possibly-true sentence with a definitive FAIL.
         return CheckResult(
-            status=CheckStatus.FAIL,
+            status=CheckStatus.UNVERIFIABLE,
             actual=claim.token,
             detail="status claim with no resolvable document",
         )
     kind, _doc = _find_document(ledger, claim.subject_id)
     if kind != "invoice":
         return CheckResult(
-            status=CheckStatus.FAIL,
+            status=CheckStatus.UNVERIFIABLE,
             actual=claim.token,
-            detail="status claim with no resolvable document",
+            detail=f"status claim about {claim.subject_id}, which is not an invoice",
         )
     derived = derive.invoice_status(ledger, claim.subject_id)
     word = " ".join(claim.token.lower().split())
@@ -405,18 +510,36 @@ def check_date(claim: Claim, ledger: Ledger) -> CheckResult:
                 detail=detail,
             )
 
+    # A sentence naming documents (two or more, so surface could not pick a
+    # single subject) restricts the match to THOSE documents: a real date
+    # misattributed across two named invoices must not pass by matching some
+    # unrelated ledger row.
+    span_ids = [
+        m.group(0).upper() for m in re.finditer(r"\b(?:INV|PMT|CM)-\d+\b", claim.span, re.IGNORECASE)
+    ]
     matches: list[str] = []
-    for inv in ledger.invoices:
-        if claimed in (inv.date, inv.due):
-            matches.append(inv.id)
-    for pay in ledger.payments:
-        if claimed == pay.date:
-            matches.append(pay.id)
-    for cm in ledger.credit_memos:
-        if claimed == cm.date:
-            matches.append(cm.id)
-    if claimed == as_of:
-        matches.append("AS_OF")
+    if span_ids:
+        for doc_id in dict.fromkeys(span_ids):
+            kind, doc = _find_document(ledger, doc_id)
+            if doc is None:
+                continue
+            dates = (doc.date, doc.due) if kind == "invoice" else (doc.date,)
+            if claimed in dates:
+                matches.append(doc_id)
+        if claimed == as_of:
+            matches.append("AS_OF")
+    else:
+        for inv in ledger.invoices:
+            if claimed in (inv.date, inv.due):
+                matches.append(inv.id)
+        for pay in ledger.payments:
+            if claimed == pay.date:
+                matches.append(pay.id)
+        for cm in ledger.credit_memos:
+            if claimed == cm.date:
+                matches.append(cm.id)
+        if claimed == as_of:
+            matches.append("AS_OF")
     if matches:
         return CheckResult(
             status=CheckStatus.PASS,
@@ -430,7 +553,7 @@ def check_date(claim: Claim, ledger: Ledger) -> CheckResult:
         detail = "date matches no document date, due date, or the statement as_of"
     return CheckResult(
         status=CheckStatus.FAIL,
-        expected=as_of.isoformat(),
+        expected="no such date in the ledger; remove it or cite a document date",
         actual=claim.token,
         detail=detail,
     )

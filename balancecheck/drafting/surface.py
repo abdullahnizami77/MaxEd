@@ -86,7 +86,10 @@ _LOOSE_PREFIX = {"invoice": "INV", "payment": "PMT", "credit memo": "CM"}
 # Stage 1 patterns (the broad detector; tuned to over-flag)
 # ---------------------------------------------------------------------------
 
-_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+|\n+")
+# The lookbehinds keep "Invoice No. 9999" and "no. 12" intact: splitting
+# after the abbreviation period would cut a document reference in half and
+# hide it from the ID detector.
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])(?<!No\.)(?<!no\.)\s+|\n+")
 
 _CURRENCY_DOLLAR_RE = re.compile(r"\$\s?\d+(?:,\d{3})*(?:\.\d{1,2})?")
 _CURRENCY_SUFFIX_RE = re.compile(
@@ -104,8 +107,13 @@ _FRACTION_RE = re.compile(
     re.IGNORECASE,
 )
 
-_EXPLICIT_ID_RE = re.compile(r"\b(INV|PMT|CM)-\d+\b", re.IGNORECASE)
-_LOOSE_ID_RE = re.compile(r"\b(invoice|payment|credit\s+memo)\s+#?(\d+)\b", re.IGNORECASE)
+# Separator-tolerant: INV-1012, INV_9999, inv 9999, INV9999 all resolve; a
+# fabricated reference in any of these shapes must still surface as C-EXIST.
+_EXPLICIT_ID_RE = re.compile(r"\b(INV|PMT|CM)[-_ ]?(\d+)\b", re.IGNORECASE)
+_LOOSE_ID_RE = re.compile(
+    r"\b(invoice|payment|credit\s+memo)\s+(?:no\.?\s*|number\s*)?#?\s*(\d+)\b",
+    re.IGNORECASE,
+)
 
 _ISO_DATE_RE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 _MONTH_DATE_RE = re.compile(
@@ -116,12 +124,22 @@ _SLASH_DATE_RE = re.compile(r"\b\d{1,2}/\d{1,2}/\d{4}\b")
 _STATUS_RE = re.compile(
     r"\b(past\s+due|unpaid|paid|outstanding|overdue|settled|cleared)\b", re.IGNORECASE
 )
+# Paraphrases that assert a paid or zero-balance state; each canonicalizes to
+# the status word "paid" so the deterministic status check applies.
+_STATUS_PARAPHRASE_RE = re.compile(
+    r"\b(?:taken\s+care\s+of|paid\s+off|paid\s+in\s+full|settled\s+in\s+full|"
+    r"cleared\s+up|nothing\s+(?:further\s+)?(?:is\s+)?owed|no\s+longer\s+owed?|"
+    r"fully\s+paid)\b",
+    re.IGNORECASE,
+)
 
 _FUZZY_RE = re.compile(
     r"\b(?:approved?|approval|agreed?|agreement|waiv(?:e|ed|er|ing)|"
     r"promis(?:e|ed|es|ing)|confirm(?:s|ed|ing)?|discuss(?:ed|es|ing|ion)?|"
     r"arrang(?:e|ed|es|ing|ement)|spoke|spoken|told|call(?:ed)?|"
-    r"account\s+manager|as\s+we\s+discussed|per\s+our\s+conversation)\b",
+    r"account\s+manager|as\s+we\s+discussed|per\s+our\s+conversation|"
+    r"taken\s+care\s+of|paid\s+off|settled\s+in\s+full|"
+    r"nothing\s+(?:further\s+)?(?:is\s+)?owed|no\s+longer\s+owed?)\b",
     re.IGNORECASE,
 )
 
@@ -134,6 +152,12 @@ _SUM_CONTEXT_RE = re.compile(
     r"\b(?:total|balance\s+(?:due|of|is)|amount\s+due|owes?|owed|owing)\b",
     re.IGNORECASE,
 )
+
+# Marker-free money shapes the red team walked past the detector: a comma
+# grouped integer ("9,999") or a two-decimal number ("2,150.00", also inside
+# parentheses) reads as money in an AR reply even with no dollar marker.
+_BARE_GROUPED_RE = re.compile(r"\b\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?\b")
+_BARE_DECIMAL_RE = re.compile(r"\b\d+\.\d{2}\b")
 
 _FRACTION_WORD_RE = re.compile(r"\b(?:half|halves|third|thirds|quarter|quarters)\b")
 _PERCENT_WORD_RE = re.compile(r"%|\bpercent\b")
@@ -310,7 +334,9 @@ def _detect_in_sentence(sent_idx: int, sentence: str, ledger: Ledger) -> list[_C
     # Document IDs first: the sentence's IDs drive subject resolution.
     id_mentions: list[tuple[int, str]] = []
     for m in _EXPLICIT_ID_RE.finditer(sentence):
-        id_mentions.append((m.start(), m.group(0).upper()))
+        id_mentions.append(
+            (m.start(), _canonical_prefix_id(m.group(1).upper(), m.group(2), ledger))
+        )
     for m in _LOOSE_ID_RE.finditer(sentence):
         id_mentions.append((m.start(), _canonical_loose_id(m.group(1), m.group(2), ledger)))
     id_mentions.sort()
@@ -411,6 +437,36 @@ def _detect_in_sentence(sent_idx: int, sentence: str, ledger: Ledger) -> list[_C
                 )
             )
 
+    # Marker-free money shapes, after percent/fraction so those intervals
+    # win. Dates never collide (no commas, never exactly two decimals).
+    for pattern in (_BARE_GROUPED_RE, _BARE_DECIMAL_RE):
+        for m in pattern.finditer(sentence):
+            if not intervals.claim(m.start(), m.end()):
+                continue
+            token = m.group(0)
+            ctype, subj = amount_type_and_subject()
+            bare_check: CheckResult | None = None
+            try:
+                parse_amount_token(token)
+            except ValueError as exc:
+                bare_check = CheckResult(
+                    status=CheckStatus.UNVERIFIABLE,
+                    actual=token,
+                    detail=f"detected amount span could not be resolved to cents: {exc}",
+                )
+            out.append(
+                _Candidate(
+                    sent_idx=sent_idx,
+                    pos=m.start(),
+                    rank=_RANK_AMOUNT,
+                    type=ctype,
+                    span=sentence,
+                    token=token,
+                    subject_id=subj,
+                    check_result=bare_check,
+                )
+            )
+
     # Dates.
     for pattern in (_ISO_DATE_RE, _MONTH_DATE_RE, _SLASH_DATE_RE):
         for m in pattern.finditer(sentence):
@@ -428,20 +484,27 @@ def _detect_in_sentence(sent_idx: int, sentence: str, ledger: Ledger) -> list[_C
                 )
             )
 
-    # Status words, only in sentences that also reference a document.
+    # Status words and paid-paraphrases, only in sentences that also
+    # reference a document. A sentence naming several documents asserts the
+    # status of each, so one claim is emitted per referenced document.
     if sentence_ids:
-        for m in _STATUS_RE.finditer(sentence):
-            out.append(
-                _Candidate(
-                    sent_idx=sent_idx,
-                    pos=m.start(),
-                    rank=_RANK_STATUS,
-                    type=ClaimType.C_STATUS,
-                    span=sentence,
-                    token=m.group(0),
-                    subject_id=subject,
+        status_hits = [(m.start(), m.group(0)) for m in _STATUS_RE.finditer(sentence)]
+        status_hits += [
+            (m.start(), "paid") for m in _STATUS_PARAPHRASE_RE.finditer(sentence)
+        ]
+        for pos, word in status_hits:
+            for sid in sentence_ids:
+                out.append(
+                    _Candidate(
+                        sent_idx=sent_idx,
+                        pos=pos,
+                        rank=_RANK_STATUS,
+                        type=ClaimType.C_STATUS,
+                        span=sentence,
+                        token=word,
+                        subject_id=sid,
+                    )
                 )
-            )
 
     # Fuzzy assertion sentences: one C-FUZZY per sentence.
     fuzzy = _FUZZY_RE.search(sentence)
@@ -458,6 +521,27 @@ def _detect_in_sentence(sent_idx: int, sentence: str, ledger: Ledger) -> list[_C
         )
 
     return out
+
+
+def _canonical_prefix_id(prefix: str, digits: str, ledger: Ledger) -> str:
+    """Canonicalize a prefix-form reference (INV_9999, inv 9999) to INV-9999.
+
+    Same ledger-assisted zero-padding as loose references; an unknown number
+    keeps its naive form so C-EXIST fails downstream instead of the mention
+    vanishing.
+    """
+    naive = f"{prefix}-{digits}"
+    ledger_ids = document_ids(ledger)
+    if naive in ledger_ids:
+        return naive
+    matches = [
+        d
+        for d in sorted(ledger_ids)
+        if d.startswith(prefix + "-") and d[len(prefix) + 1 :].lstrip("0") == digits.lstrip("0")
+    ]
+    if len(matches) == 1:
+        return matches[0]
+    return naive
 
 
 def _canonical_loose_id(kind: str, digits: str, ledger: Ledger) -> str:
