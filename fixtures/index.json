@@ -1,0 +1,100 @@
+[
+  {
+    "scenario_id": "S-A-01",
+    "pool": "A",
+    "structure_labels": [],
+    "ref": "f9d11a17d8acbb36"
+  },
+  {
+    "scenario_id": "S-A-02",
+    "pool": "A",
+    "structure_labels": [
+      "has_unapplied_cash"
+    ],
+    "ref": "f83dcd69e18bb337"
+  },
+  {
+    "scenario_id": "S-A-03",
+    "pool": "A",
+    "structure_labels": [
+      "has_partial"
+    ],
+    "ref": "45dc14eb58822ad4"
+  },
+  {
+    "scenario_id": "S-A-04",
+    "pool": "A",
+    "structure_labels": [
+      "has_open_credit"
+    ],
+    "ref": "e9b47da7c87e81ff"
+  },
+  {
+    "scenario_id": "S-A-05",
+    "pool": "A",
+    "structure_labels": [
+      "has_near_duplicate",
+      "has_cutoff_risk"
+    ],
+    "ref": "4579c416cebbb8bd"
+  },
+  {
+    "scenario_id": "S-A-06",
+    "pool": "A",
+    "structure_labels": [
+      "has_unapplied_cash",
+      "has_near_duplicate",
+      "has_ambiguous_allocation"
+    ],
+    "ref": "ba2f0cc543842422"
+  },
+  {
+    "scenario_id": "S-B-01",
+    "pool": "B",
+    "structure_labels": [],
+    "ref": "8e41dbd9d947d203"
+  },
+  {
+    "scenario_id": "S-B-02",
+    "pool": "B",
+    "structure_labels": [
+      "has_unapplied_cash"
+    ],
+    "ref": "92ba6eea9c03e669"
+  },
+  {
+    "scenario_id": "S-B-03",
+    "pool": "B",
+    "structure_labels": [
+      "has_partial"
+    ],
+    "ref": "abd636c30039cbbf"
+  },
+  {
+    "scenario_id": "S-B-04",
+    "pool": "B",
+    "structure_labels": [
+      "has_open_credit"
+    ],
+    "ref": "c5cbfd72a8a47be1"
+  },
+  {
+    "scenario_id": "S-B-05",
+    "pool": "B",
+    "structure_labels": [
+      "has_near_duplicate",
+      "has_cutoff_risk"
+    ],
+    "ref": "514e55539d1c0244"
+  },
+  {
+    "scenario_id": "S-B-06",
+    "pool": "B",
+    "structure_labels": [
+      "has_unapplied_cash",
+      "has_near_duplicate",
+      "has_ambiguous_allocation"
+    ],
+    "ref": "388b74aff077a102"
+  }
+]

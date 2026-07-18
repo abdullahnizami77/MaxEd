@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "scenario_id": "S-B-05",
+  "pool": "B",
+  "structure_labels": [
+    "has_near_duplicate",
+    "has_cutoff_risk"
+  ],
+  "client": {
+    "id": "CL-B",
+    "name": "Bluestem Orchard Supply LLC",
+    "terms_days": 45,
+    "as_of": "2026-04-30"
+  },
+  "invoices": [
+    {
+      "id": "INV-1527",
+      "date": "2026-03-11",
+      "due": "2026-04-25",
+      "amount_cents": 890000,
+      "memo": "Fertilizer program, installment 2"
+    },
+    {
+      "id": "INV-1551",
+      "date": "2026-03-18",
+      "due": "2026-05-02",
+      "amount_cents": 890000,
+      "memo": "Fertilizer program, installment 3"
+    },
+    {
+      "id": "INV-1565",
+      "date": "2026-02-27",
+      "due": "2026-04-13",
+      "amount_cents": 241550,
+      "memo": "Bin liner and pallet wrap"
+    }
+  ],
+  "payments": [
+    {
+      "id": "PMT-0552",
+      "date": "2026-04-27",
+      "amount_cents": 890000,
+      "method": "wire",
+      "reference": "WIRE-61436"
+    }
+  ],
+  "credit_memos": [],
+  "applications": [
+    {
+      "source_id": "PMT-0552",
+      "target_invoice": "INV-1551",
+      "amount_cents": 890000
+    }
+  ]
+}

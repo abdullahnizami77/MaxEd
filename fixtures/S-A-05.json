@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "scenario_id": "S-A-05",
+  "pool": "A",
+  "structure_labels": [
+    "has_near_duplicate",
+    "has_cutoff_risk"
+  ],
+  "client": {
+    "id": "CL-A",
+    "name": "Harbor & Finch Design Co.",
+    "terms_days": 30,
+    "as_of": "2026-03-31"
+  },
+  "invoices": [
+    {
+      "id": "INV-3169",
+      "date": "2026-02-10",
+      "due": "2026-03-12",
+      "amount_cents": 540000,
+      "memo": "Monthly retainer, February"
+    },
+    {
+      "id": "INV-3190",
+      "date": "2026-02-24",
+      "due": "2026-03-26",
+      "amount_cents": 540000,
+      "memo": "Monthly retainer, March"
+    },
+    {
+      "id": "INV-3198",
+      "date": "2026-01-30",
+      "due": "2026-03-01",
+      "amount_cents": 182500,
+      "memo": "Icon set licensing"
+    }
+  ],
+  "payments": [
+    {
+      "id": "PMT-0305",
+      "date": "2026-03-28",
+      "amount_cents": 540000,
+      "method": "wire",
+      "reference": "WIRE-99312"
+    }
+  ],
+  "credit_memos": [],
+  "applications": [
+    {
+      "source_id": "PMT-0305",
+      "target_invoice": "INV-3190",
+      "amount_cents": 540000
+    }
+  ]
+}

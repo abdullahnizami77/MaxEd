@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "scenario_id": "S-A-03",
+  "pool": "A",
+  "structure_labels": [
+    "has_partial"
+  ],
+  "client": {
+    "id": "CL-A",
+    "name": "Harbor & Finch Design Co.",
+    "terms_days": 30,
+    "as_of": "2026-03-31"
+  },
+  "invoices": [
+    {
+      "id": "INV-3063",
+      "date": "2026-01-15",
+      "due": "2026-02-14",
+      "amount_cents": 820000,
+      "memo": "Office signage program"
+    },
+    {
+      "id": "INV-3079",
+      "date": "2026-02-26",
+      "due": "2026-03-28",
+      "amount_cents": 145050,
+      "memo": "Menu and wayfinding revisions"
+    },
+    {
+      "id": "INV-3106",
+      "date": "2026-01-05",
+      "due": "2026-02-04",
+      "amount_cents": 560000,
+      "memo": "Product photography day rate"
+    }
+  ],
+  "payments": [
+    {
+      "id": "PMT-0278",
+      "date": "2026-02-20",
+      "amount_cents": 300000,
+      "method": "ach",
+      "reference": "ACH-89810"
+    },
+    {
+      "id": "PMT-0283",
+      "date": "2026-02-02",
+      "amount_cents": 560000,
+      "method": "ach",
+      "reference": "ACH-90960"
+    }
+  ],
+  "credit_memos": [],
+  "applications": [
+    {
+      "source_id": "PMT-0278",
+      "target_invoice": "INV-3063",
+      "amount_cents": 300000
+    },
+    {
+      "source_id": "PMT-0283",
+      "target_invoice": "INV-3106",
+      "amount_cents": 560000
+    }
+  ]
+}

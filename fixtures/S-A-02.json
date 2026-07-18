@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "scenario_id": "S-A-02",
+  "pool": "A",
+  "structure_labels": [
+    "has_unapplied_cash"
+  ],
+  "client": {
+    "id": "CL-A",
+    "name": "Harbor & Finch Design Co.",
+    "terms_days": 30,
+    "as_of": "2026-03-31"
+  },
+  "invoices": [
+    {
+      "id": "INV-2987",
+      "date": "2026-01-20",
+      "due": "2026-02-19",
+      "amount_cents": 630000,
+      "memo": "Packaging concepts, spring line"
+    },
+    {
+      "id": "INV-3014",
+      "date": "2026-02-11",
+      "due": "2026-03-13",
+      "amount_cents": 215000,
+      "memo": "Trade show banner set"
+    },
+    {
+      "id": "INV-3035",
+      "date": "2026-01-08",
+      "due": "2026-02-07",
+      "amount_cents": 987550,
+      "memo": "Annual brand guidelines update"
+    }
+  ],
+  "payments": [
+    {
+      "id": "PMT-0263",
+      "date": "2026-02-06",
+      "amount_cents": 987550,
+      "method": "ach",
+      "reference": "ACH-86700"
+    },
+    {
+      "id": "PMT-0265",
+      "date": "2026-03-10",
+      "amount_cents": 630000,
+      "method": "check",
+      "reference": "CHK-23832"
+    }
+  ],
+  "credit_memos": [],
+  "applications": [
+    {
+      "source_id": "PMT-0263",
+      "target_invoice": "INV-3035",
+      "amount_cents": 987550
+    }
+  ]
+}

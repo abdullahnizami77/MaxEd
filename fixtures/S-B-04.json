@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "scenario_id": "S-B-04",
+  "pool": "B",
+  "structure_labels": [
+    "has_open_credit"
+  ],
+  "client": {
+    "id": "CL-B",
+    "name": "Bluestem Orchard Supply LLC",
+    "terms_days": 45,
+    "as_of": "2026-04-30"
+  },
+  "invoices": [
+    {
+      "id": "INV-1465",
+      "date": "2026-03-06",
+      "due": "2026-04-20",
+      "amount_cents": 685000,
+      "memo": "Netting and hail protection"
+    },
+    {
+      "id": "INV-1492",
+      "date": "2026-02-19",
+      "due": "2026-04-05",
+      "amount_cents": 1430050,
+      "memo": "Grafting stock, spring program"
+    },
+    {
+      "id": "INV-1508",
+      "date": "2026-01-29",
+      "due": "2026-03-15",
+      "amount_cents": 312000,
+      "memo": "Irrigation filter cartridges"
+    }
+  ],
+  "payments": [
+    {
+      "id": "PMT-0539",
+      "date": "2026-02-24",
+      "amount_cents": 312000,
+      "method": "ach",
+      "reference": "ACH-16906"
+    }
+  ],
+  "credit_memos": [
+    {
+      "id": "CM-0026",
+      "date": "2026-04-03",
+      "amount_cents": 127500,
+      "reason": "Damaged trellis anchors, quality credit"
+    }
+  ],
+  "applications": [
+    {
+      "source_id": "PMT-0539",
+      "target_invoice": "INV-1508",
+      "amount_cents": 312000
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "scenario_id": "S-A-01",
+  "pool": "A",
+  "structure_labels": [],
+  "client": {
+    "id": "CL-A",
+    "name": "Harbor & Finch Design Co.",
+    "terms_days": 30,
+    "as_of": "2026-03-31"
+  },
+  "invoices": [
+    {
+      "id": "INV-2927",
+      "date": "2026-01-12",
+      "due": "2026-02-11",
+      "amount_cents": 485000,
+      "memo": "Brand identity refresh, phase 1"
+    },
+    {
+      "id": "INV-2939",
+      "date": "2026-01-28",
+      "due": "2026-02-27",
+      "amount_cents": 76000,
+      "memo": "Print collateral reorder"
+    },
+    {
+      "id": "INV-2943",
+      "date": "2026-02-03",
+      "due": "2026-03-05",
+      "amount_cents": 1240000,
+      "memo": "Website redesign, milestone 2"
+    },
+    {
+      "id": "INV-2959",
+      "date": "2026-03-02",
+      "due": "2026-04-01",
+      "amount_cents": 197550,
+      "memo": "Q1 social media asset library"
+    }
+  ],
+  "payments": [
+    {
+      "id": "PMT-0244",
+      "date": "2026-02-18",
+      "amount_cents": 485000,
+      "method": "ach",
+      "reference": "ACH-16924"
+    },
+    {
+      "id": "PMT-0261",
+      "date": "2026-03-06",
+      "amount_cents": 76000,
+      "method": "ach",
+      "reference": "ACH-76807"
+    }
+  ],
+  "credit_memos": [],
+  "applications": [
+    {
+      "source_id": "PMT-0244",
+      "target_invoice": "INV-2927",
+      "amount_cents": 485000
+    },
+    {
+      "source_id": "PMT-0261",
+      "target_invoice": "INV-2939",
+      "amount_cents": 76000
+    }
+  ]
+}
