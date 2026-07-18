@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "scenario_id": "S-B-01",
+  "pool": "B",
+  "structure_labels": [],
+  "client": {
+    "id": "CL-B",
+    "name": "Bluestem Orchard Supply LLC",
+    "terms_days": 45,
+    "as_of": "2026-04-30"
+  },
+  "invoices": [
+    {
+      "id": "INV-1317",
+      "date": "2026-02-09",
+      "due": "2026-03-26",
+      "amount_cents": 734000,
+      "memo": "Trellis wire and posts, spring order"
+    },
+    {
+      "id": "INV-1329",
+      "date": "2026-02-25",
+      "due": "2026-04-11",
+      "amount_cents": 112000,
+      "memo": "Pruning saw restock"
+    },
+    {
+      "id": "INV-1342",
+      "date": "2026-03-04",
+      "due": "2026-04-18",
+      "amount_cents": 1575050,
+      "memo": "Drip irrigation system, block 4"
+    },
+    {
+      "id": "INV-1359",
+      "date": "2026-04-01",
+      "due": "2026-05-16",
+      "amount_cents": 298000,
+      "memo": "Pollination hive rental"
+    }
+  ],
+  "payments": [
+    {
+      "id": "PMT-0481",
+      "date": "2026-03-16",
+      "amount_cents": 734000,
+      "method": "ach",
+      "reference": "ACH-41374"
+    },
+    {
+      "id": "PMT-0490",
+      "date": "2026-04-02",
+      "amount_cents": 112000,
+      "method": "ach",
+      "reference": "ACH-36957"
+    }
+  ],
+  "credit_memos": [],
+  "applications": [
+    {
+      "source_id": "PMT-0481",
+      "target_invoice": "INV-1317",
+      "amount_cents": 734000
+    },
+    {
+      "source_id": "PMT-0490",
+      "target_invoice": "INV-1329",
+      "amount_cents": 112000
+    }
+  ]
+}

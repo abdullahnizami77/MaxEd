@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "scenario_id": "S-A-06",
+  "pool": "A",
+  "structure_labels": [
+    "has_unapplied_cash",
+    "has_near_duplicate",
+    "has_ambiguous_allocation"
+  ],
+  "client": {
+    "id": "CL-A",
+    "name": "Harbor & Finch Design Co.",
+    "terms_days": 30,
+    "as_of": "2026-03-31"
+  },
+  "invoices": [
+    {
+      "id": "INV-3211",
+      "date": "2026-02-05",
+      "due": "2026-03-07",
+      "amount_cents": 725000,
+      "memo": "Catalog layout, spring edition"
+    },
+    {
+      "id": "INV-3230",
+      "date": "2026-03-03",
+      "due": "2026-04-02",
+      "amount_cents": 725000,
+      "memo": "Catalog layout, summer edition"
+    },
+    {
+      "id": "INV-3255",
+      "date": "2026-01-22",
+      "due": "2026-02-21",
+      "amount_cents": 390050,
+      "memo": "Illustration commission"
+    }
+  ],
+  "payments": [
+    {
+      "id": "PMT-0310",
+      "date": "2026-02-17",
+      "amount_cents": 390050,
+      "method": "ach",
+      "reference": "ACH-26640"
+    },
+    {
+      "id": "PMT-0319",
+      "date": "2026-03-12",
+      "amount_cents": 725000,
+      "method": "check",
+      "reference": "CHK-35178"
+    }
+  ],
+  "credit_memos": [],
+  "applications": [
+    {
+      "source_id": "PMT-0310",
+      "target_invoice": "INV-3255",
+      "amount_cents": 390050
+    }
+  ]
+}

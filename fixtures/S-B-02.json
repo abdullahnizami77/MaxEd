@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "scenario_id": "S-B-02",
+  "pool": "B",
+  "structure_labels": [
+    "has_unapplied_cash"
+  ],
+  "client": {
+    "id": "CL-B",
+    "name": "Bluestem Orchard Supply LLC",
+    "terms_days": 45,
+    "as_of": "2026-04-30"
+  },
+  "invoices": [
+    {
+      "id": "INV-1372",
+      "date": "2026-02-18",
+      "due": "2026-04-04",
+      "amount_cents": 472500,
+      "memo": "Frost fan annual service"
+    },
+    {
+      "id": "INV-1389",
+      "date": "2026-03-09",
+      "due": "2026-04-23",
+      "amount_cents": 934050,
+      "memo": "Harvest bin replacement lot"
+    },
+    {
+      "id": "INV-1398",
+      "date": "2026-02-02",
+      "due": "2026-03-19",
+      "amount_cents": 618000,
+      "memo": "Sprayer parts and calibration"
+    }
+  ],
+  "payments": [
+    {
+      "id": "PMT-0493",
+      "date": "2026-03-06",
+      "amount_cents": 618000,
+      "method": "ach",
+      "reference": "ACH-72859"
+    },
+    {
+      "id": "PMT-0501",
+      "date": "2026-04-10",
+      "amount_cents": 472500,
+      "method": "check",
+      "reference": "CHK-93964"
+    }
+  ],
+  "credit_memos": [],
+  "applications": [
+    {
+      "source_id": "PMT-0493",
+      "target_invoice": "INV-1398",
+      "amount_cents": 618000
+    }
+  ]
+}

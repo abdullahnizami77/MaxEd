@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "scenario_id": "S-B-06",
+  "pool": "B",
+  "structure_labels": [
+    "has_unapplied_cash",
+    "has_near_duplicate",
+    "has_ambiguous_allocation"
+  ],
+  "client": {
+    "id": "CL-B",
+    "name": "Bluestem Orchard Supply LLC",
+    "terms_days": 45,
+    "as_of": "2026-04-30"
+  },
+  "invoices": [
+    {
+      "id": "INV-1571",
+      "date": "2026-03-05",
+      "due": "2026-04-19",
+      "amount_cents": 567500,
+      "memo": "Rootstock order, lot 12"
+    },
+    {
+      "id": "INV-1597",
+      "date": "2026-03-26",
+      "due": "2026-05-10",
+      "amount_cents": 567500,
+      "memo": "Rootstock order, lot 14"
+    },
+    {
+      "id": "INV-1603",
+      "date": "2026-02-10",
+      "due": "2026-03-27",
+      "amount_cents": 948050,
+      "memo": "Windbreak seedling delivery"
+    }
+  ],
+  "payments": [
+    {
+      "id": "PMT-0560",
+      "date": "2026-03-13",
+      "amount_cents": 948050,
+      "method": "ach",
+      "reference": "ACH-14459"
+    },
+    {
+      "id": "PMT-0577",
+      "date": "2026-04-08",
+      "amount_cents": 567500,
+      "method": "check",
+      "reference": "CHK-41981"
+    }
+  ],
+  "credit_memos": [],
+  "applications": [
+    {
+      "source_id": "PMT-0560",
+      "target_invoice": "INV-1603",
+      "amount_cents": 948050
+    }
+  ]
+}
