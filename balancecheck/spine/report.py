@@ -48,6 +48,7 @@ REPORT_NAMES = (
     "pairwise",
     "trace_stats",
     "oracle_crosscheck",
+    "agentic_recovery",
 )
 
 _BLOCK_RE = re.compile(
@@ -701,6 +702,76 @@ def oracle_crosscheck_table(events: Iterable[object], fixtures_dir: Path) -> str
     return "\n".join(lines) + "\n"
 
 
+def agentic_recovery_table(raw_dir: Path) -> str:
+    """The agentic-recovery ablation over results/raw/recovery_bench.json.
+
+    Each row is one correctable r0 failure revised once by each backend; the
+    same deterministic verifier judged both revisions, so the comparison is
+    recovery capability, not judging leniency.
+    """
+    path = raw_dir / "recovery_bench.json"
+    lines: list[str] = ["# Agentic recovery ablation", ""]
+    if not path.exists():
+        lines.append("(recovery bench not yet recorded)")
+        return "\n".join(lines) + "\n"
+    rows: list[dict] = json.loads(path.read_text(encoding="utf-8"))
+    if not rows:
+        lines.append("(recovery bench recorded zero cases)")
+        return "\n".join(lines) + "\n"
+
+    lines.append("Identical correctable first drafts were revised once by the prompt")
+    lines.append("backend (one LLM call carrying the gate's correction) and once by the")
+    lines.append("bounded agentic backend (up to three LLM calls and six read-only tool")
+    lines.append("calls); the same extract, check, and decide pipeline judged both. The")
+    lines.append("agent never approves its own work and HUMAN_GATE remains the only")
+    lines.append("successful terminal state.")
+    lines.append("")
+    body: list[list[str]] = []
+    for r in rows:
+        body.append([
+            r["case_id"],
+            r["failure_kind"],
+            "recovered" if r["prompt_recovered"] else "escalated",
+            "recovered" if r["agentic_recovered"] else "escalated",
+            str(r["agentic_llm_calls"]),
+            str(r["agentic_tool_calls"]),
+            "yes" if r["agentic_forced_final"] else "no",
+        ])
+    lines.extend(
+        _table(
+            ["case", "failure", "prompt arm", "agentic arm",
+             "agent LLM calls", "tool calls", "forced final"],
+            body,
+        )
+    )
+    n = len(rows)
+    p_rec = sum(1 for r in rows if r["prompt_recovered"])
+    a_rec = sum(1 for r in rows if r["agentic_recovered"])
+    tools_total = sum(r["agentic_tool_calls"] for r in rows)
+    calls_total = sum(r["agentic_llm_calls"] for r in rows)
+    forced = sum(1 for r in rows if r["agentic_forced_final"])
+    lines.append("")
+    lines.append(f"Recovery rate: prompt {_ratio(p_rec, n)}, agentic {_ratio(a_rec, n)}.")
+    lines.append(
+        f"Agentic cost: {calls_total} agent LLM calls and {tools_total} tool calls"
+        f" across {n} recoveries"
+        f" ({(10 * calls_total) // n / 10 if n else 0} calls and"
+        f" {(10 * tools_total) // n / 10 if n else 0} tools per recovery on average)."
+    )
+    lines.append(
+        f"Forced-final rate: {_ratio(forced, n)}. A forced final means the model did"
+        " not gather sufficient evidence unaided and the orchestrator executed the"
+        " missing required tools deterministically before demanding the final draft:"
+        " it is the honest measure of how much of the agency is the model's own."
+    )
+    lines.append(
+        f"Cost framing: the prompt arm spends 1 LLM call per recovery; the agentic"
+        f" arm spent {(10 * calls_total) // n / 10 if n else 0} on average plus tools."
+        " The fast path (a clean first draft) uses one call and zero tools in both modes."
+    )
+    return "\n".join(lines) + "\n"
+
+
 def write_all(cfg: Config, results_dir: Path, raw_dir: Path) -> dict[str, Path]:
     """Generate every results/*.md from the event log and raw JSON files.
 
@@ -716,6 +787,7 @@ def write_all(cfg: Config, results_dir: Path, raw_dir: Path) -> dict[str, Path]:
         "pairwise": pairwise_table(raw_dir),
         "trace_stats": trace_stats(events),
         "oracle_crosscheck": oracle_crosscheck_table(events, REPO_ROOT / "fixtures"),
+        "agentic_recovery": agentic_recovery_table(raw_dir),
     }
     results_dir.mkdir(parents=True, exist_ok=True)
     written: dict[str, Path] = {}

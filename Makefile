@@ -6,7 +6,7 @@
 
 PY := ./.venv/bin/python
 
-.PHONY: fixtures stubs demo test verify poolA review pass1 ingest pass2 pass2r errors bench-select bench-judge bench-agree bench-pairwise report readme
+.PHONY: fixtures stubs demo test verify poolA review pass1 ingest pass2 pass2r errors bench-select bench-judge bench-agree bench-pairwise recovery-bench report readme
 
 fixtures:
 	$(PY) -m balancecheck.substrate.foundry
@@ -57,6 +57,9 @@ bench-agree:
 
 bench-pairwise:
 	$(PY) -m balancecheck.cli bench-pairwise
+
+recovery-bench:
+	$(PY) -m balancecheck.cli recovery-bench
 
 report:
 	$(PY) -m balancecheck.cli report

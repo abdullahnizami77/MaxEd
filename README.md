@@ -226,6 +226,37 @@ Total trace lines: 51
 
 Zero structured-parse failures across every judge and verifier call. Structured outputs use JSON-schema constrained decoding at the endpoint, with a validate-and-retry fallback in the client, and the observed malformed rate was zero. Constrained decoding makes malformed JSON very unlikely at the decoder; the retry path is the belt-and-braces behind it.
 
+## Agentic revision recovery (optional runtime path)
+
+The loop above is the fast path: one inexpensive drafting call over facts code
+already computed, verified deterministically. An optional recovery path
+(off by default, BC_REVISION_MODE=agentic) spends more model effort only after
+the gate finds a correctable failure: a bounded agent may call six read-only
+accounting tools (account summary, open invoices, a single invoice, unapplied
+sources, a single source, application history) to gather ledger evidence, then
+writes the corrected draft. Budgets are strict: one recovery per scenario, at
+most three agent calls and six tool executions, then a forced final; a
+recovery that still fails escalates to a human, never loops. The agent cannot
+approve, send, or decide: its draft goes back through the same extraction,
+checks, and gate, and the human gate remains the only successful terminal
+state. Every tool attempt is a typed event in the log.
+
+The ablation below ran identical correctable first drafts through both
+revision backends, judged by the same verifier:
+
+<!-- BC:BEGIN agentic_recovery -->
+# Agentic recovery ablation
+
+(recovery bench not yet recorded)
+<!-- BC:END agentic_recovery -->
+
+The forced-final rate is the honest small-model measure: it counts recoveries
+where the model did not gather the required evidence unaided and the
+orchestrator had to execute the missing tools deterministically before the
+final draft. On a small model the recovery path partly degrades toward
+deterministic evidence-gathering plus one drafting call, which is stated here
+rather than hidden.
+
 ## How it works
 
 ```mermaid
