@@ -176,10 +176,29 @@ def document_figures(fixture: dict) -> tuple[dict[str, set[int]], set[int]]:
         unapplied_by_source[app["source_id"]] = (
             unapplied_by_source.get(app["source_id"], 0) - app["amount_cents"]
         )
+    applied_to_invoice: dict[str, int] = {}
+    applied_from_source: dict[str, int] = {}
+    for app in fixture.get("applications", []):
+        applied_to_invoice[app["target_invoice"]] = (
+            applied_to_invoice.get(app["target_invoice"], 0) + app["amount_cents"]
+        )
+        applied_from_source[app["source_id"]] = (
+            applied_from_source.get(app["source_id"], 0) + app["amount_cents"]
+        )
+    # An invoice may legitimately be described by its original, open, or
+    # applied (paid) amount; a payment/credit by its original, unapplied, or
+    # applied amount. Including the applied portion is what lets a transparent
+    # decomposition ("of which $X has been paid") verify.
     for inv in fixture.get("invoices", []):
-        figures[inv["id"]] = {originals[inv["id"]], open_by_invoice[inv["id"]]}
+        figs = {originals[inv["id"]], open_by_invoice[inv["id"]]}
+        if applied_to_invoice.get(inv["id"], 0) > 0:
+            figs.add(applied_to_invoice[inv["id"]])
+        figures[inv["id"]] = figs
     for src_id in payment_ids | credit_ids:
-        figures[src_id] = {originals[src_id], unapplied_by_source[src_id]}
+        figs = {originals[src_id], unapplied_by_source[src_id]}
+        if applied_from_source.get(src_id, 0) > 0:
+            figs.add(applied_from_source[src_id])
+        figures[src_id] = figs
 
     open_invoice_total = sum(open_by_invoice.values())
     unapplied_cash_total = sum(unapplied_by_source.get(p, 0) for p in payment_ids)

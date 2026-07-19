@@ -491,17 +491,58 @@ def calibration_table(raw_dir: Path) -> str:
         lines.append("(calibration not yet recorded)")
         return "\n".join(lines) + "\n"
     data: dict = json.loads(path.read_text(encoding="utf-8"))
-    lines.extend(
-        _table(
-            ["field", "value"],
-            [[key, _json_value(data[key])] for key in sorted(data)],
-        )
-    )
     n = data.get("n", data.get("n_labeled", 16))
+
+    def _num(x) -> str:
+        return f"{x:.3f}" if isinstance(x, (int, float)) else "n/a"
+
+    def _ci(pair) -> str:
+        return f"[{pair[0]:.3f}, {pair[1]:.3f}]" if isinstance(pair, list) and len(pair) == 2 else "n/a"
+
+    acc = data.get("acceptable", {})
+    tone = data.get("tone", {})
+    clarity = data.get("clarity", {})
+    rows = [
+        [
+            "acceptable (accept/reject)",
+            _num(acc.get("kappa")),
+            _ci(acc.get("kappa_ci")),
+            _num(acc.get("pabak")),
+            _num(acc.get("raw_agreement")),
+        ],
+        [
+            "tone (1-4, weighted)",
+            _num(tone.get("weighted_kappa")),
+            _ci(tone.get("weighted_kappa_ci")),
+            "n/a",
+            _num(tone.get("raw_agreement")),
+        ],
+        [
+            "clarity (1-4, weighted)",
+            _num(clarity.get("weighted_kappa")),
+            _ci(clarity.get("weighted_kappa_ci")),
+            "n/a",
+            _num(clarity.get("raw_agreement")),
+        ],
+    ]
+    lines.extend(_table(["dimension", "kappa", "95% CI (bootstrap)", "PABAK", "raw agreement"], rows))
+    lines.append("")
+    clean = data.get("clean_subset", {})
+    corrupt = data.get("corrupted_subset", {})
+    lines.append(
+        f"By draft class: clean subset kappa {_num(clean.get('binary_kappa'))} "
+        f"(n={clean.get('n', 0)}, raw {_num(clean.get('raw_agreement'))}); corrupted subset "
+        f"kappa {_num(corrupt.get('binary_kappa'))} (n={corrupt.get('n', 0)}, raw "
+        f"{_num(corrupt.get('raw_agreement'))}). The corrupted-subset kappa is 0 by the"
+        " constant-rater degeneracy (every corrupted draft is labelled not-acceptable),"
+        " which is exactly why raw agreement and PABAK are reported alongside kappa."
+    )
     lines.append("")
     lines.append(
-        f"Kappa on n={n} carries a wide CI and is a calibration signal, "
-        "not a certification."
+        f"What this measures: the acceptable dimension is the holistic accept-or-reject"
+        f" call (tone and completeness together), NOT grounding, which is checked by code."
+        f" Kappa on n={n} carries a wide CI (its upper bound touches 1.0 as a small-sample"
+        " bootstrap boundary artifact) and is a calibration signal, not a certification."
     )
     return "\n".join(lines) + "\n"
 

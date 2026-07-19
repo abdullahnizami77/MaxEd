@@ -10,7 +10,7 @@ It drafts client replies that explain a balance due. Before any draft reaches a 
 python3 -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
 make fixtures   # build the 12 synthetic client scenarios
 make demo       # run the full draft-verify-decide loop in stub mode
-make test       # 296 tests
+make test       # 318 tests
 ```
 
 The demo shows the two ends of the loop: a clean scenario reaches the human gate, and a scenario whose records are genuinely ambiguous is refused (the agent abstains and records exactly what it would need to proceed).
@@ -97,39 +97,48 @@ final-stage read would mask learning.
 
 ## Per pass
 
-| pass | scenarios | grounding | completeness | mean revisions | terminal actions |
+| pass | scenarios | grounding | completeness | revisions (total/scenarios) | terminal actions |
 |---|---|---|---|---|---|
-| pass1 | 6 | 36/36 (100%) | 12/15 (80%) | 0/6 | human_gate: 5, abstain: 1 |
-| pass2 | 6 | 62/62 (100%) | 12/15 (80%) | 0/6 | human_gate: 5, abstain: 1 |
-| pass2R | 6 | 55/55 (100%) | 12/15 (80%) | 0/6 | human_gate: 5, abstain: 1 |
+| pass1 | 6 | 36/36 (100%) | 12/12 (100%) | 0/6 | human_gate: 5, abstain: 1 |
+| pass2 | 6 | 58/58 (100%) | 12/12 (100%) | 0/6 | human_gate: 5, abstain: 1 |
+| pass2R | 6 | 56/56 (100%) | 12/12 (100%) | 0/6 | human_gate: 5, abstain: 1 |
 
 ## Paired per scenario: pass1 vs pass2
 
 | scenario | grounding pass1 -> pass2 | delta (pp) | completeness pass1 -> pass2 | delta (pp) | revisions pass1 -> pass2 | delta |
 |---|---|---|---|---|---|---|
-| S-B-01 | 6/6 (100%) -> 11/11 (100%) | 0 | 2/2 (100%) -> 2/2 (100%) | 0 | 0 -> 0 | 0 |
+| S-B-01 | 6/6 (100%) -> 10/10 (100%) | 0 | 2/2 (100%) -> 2/2 (100%) | 0 | 0 -> 0 | 0 |
 | S-B-02 | 8/8 (100%) -> 13/13 (100%) | 0 | 3/3 (100%) -> 3/3 (100%) | 0 | 0 -> 0 | 0 |
 | S-B-03 | 6/6 (100%) -> 12/12 (100%) | 0 | 2/2 (100%) -> 2/2 (100%) | 0 | 0 -> 0 | 0 |
 | S-B-04 | 10/10 (100%) -> 13/13 (100%) | 0 | 3/3 (100%) -> 3/3 (100%) | 0 | 0 -> 0 | 0 |
-| S-B-05 | 6/6 (100%) -> 13/13 (100%) | 0 | 2/2 (100%) -> 2/2 (100%) | 0 | 0 -> 0 | 0 |
-| S-B-06 | 0/0 (n/a) -> 0/0 (n/a) | n/a | 0/3 (0%) -> 0/3 (0%) | 0 | 0 -> 0 | 0 |
+| S-B-05 | 6/6 (100%) -> 10/10 (100%) | 0 | 2/2 (100%) -> 2/2 (100%) | 0 | 0 -> 0 | 0 |
+| S-B-06 | 0/0 (n/a) -> 0/0 (n/a) | n/a | 0/0 (n/a) -> 0/0 (n/a) | n/a | 0 -> 0 | 0 |
 
 n = 6 paired scenarios. n is too small for a significance claim; deltas are directional.
 
-## Directional: the behaviors the Pool A edits targeted
+## Directional: the behaviours the Pool A edits targeted
 
-Rates over first-pass Pool B drafts; each marker is a deterministic
-string check named in the generator, not a judged quality.
+Each behaviour is a code-derived check over the first-pass draft
+(the client name, the issue and due dates of every open invoice, an
+in-place explanation of unapplied items, a reconciliation invite), not
+a fixed golden phrase. A behaviour that cannot apply to a scenario (no
+unapplied item) is excluded from that scenario's denominator. The pass2R
+column is the random-memory ablation: relevant retrieval versus arbitrary
+examples, the comparison that isolates the retrieval function.
 
-| behavior | pass1 | pass2 |
-|---|---|---|
-| greets the client by name | 0/5 | 5/5 |
-| itemizes with issue and due dates | 0/5 | 5/5 |
-| explains unapplied items in place | 0/5 | 1/5 |
-| invites reconciliation in the closing | 0/5 | 5/5 |
+| behaviour | pass1 | pass2 | pass2R |
+|---|---|---|---|
+| greets the client by name | 0/5 | 5/5 | 5/5 |
+| itemizes open invoices with issue and due dates | 0/5 | 5/5 | 5/5 |
+| explains unapplied cash or credit in place | 0/2 | 2/2 | 1/2 |
+| invites reconciliation in the closing | 4/5 | 5/5 | 5/5 |
+
+| measure | pass1 | pass2 | pass2R |
+|---|---|---|---|
+| mean first-pass draft length (chars) | 429 | 637 | 599 |
 <!-- BC:END before_after -->
 
-The headline is in the last two tables. The aggregate score was already at the ceiling before learning (the drafter transcribes numbers that code computes, so its figures are usually right). What moved is what the human edits asked for: the second batch of drafts adopted the edited style on scenarios the memory had never seen, and carried 36 verified claims before learning versus 62 after, at the same 100 percent pass rate. Richer drafts, still fully grounded.
+The headline is in the last two tables. The aggregate grounding and completeness scores were already at the ceiling before learning (the drafter transcribes numbers that code computes, so its figures are usually right). What moved is what the human edits asked for: the second batch of drafts adopted the edited style on held-out scenarios the memory had never seen, greeting the client by name, itemizing with issue and due dates, and explaining unapplied items in place. The directional table shows this, and the random-memory ablation (pass2R) shows the structure-keyed retrieval matters: it explained unapplied items in place on both applicable scenarios where random memory managed one. Verified claim density rose (see the per-pass grounding counts) at an unchanged 100 percent pass rate: richer drafts, still fully grounded. The draft-length row is shown deliberately, because it is why the judged pairwise preference is treated as secondary to the code-grounded metric.
 
 ### Does a judge prefer the after-drafts?
 
@@ -144,6 +153,8 @@ The headline is in the last two tables. The aggregate score was already at the c
 
 Decisive pairs: 5/5 (100%).
 inconsistency rate (an upper bound on position bias): 0/5 (0%)
+
+Position bias is the defended failure mode (both orderings, ties on disagreement). Length bias is NOT defended here: the after-drafts are systematically longer (see the draft-length row in the before/after report), so this pairwise preference is confounded with length. The primary before/after evidence is therefore the code-grounded first-pass metric, not this judged preference.
 <!-- BC:END pairwise -->
 
 ### Can the judge be trusted?
@@ -151,18 +162,15 @@ inconsistency rate (an upper bound on position bias): 0/5 (0%)
 <!-- BC:BEGIN calibration -->
 # Judge calibration
 
-| field | value |
-|---|---|
-| acceptable | {"kappa": 0.746031746031746, "kappa_ci": [0.3469387755102041, 1.0], "pabak": 0.75, "raw_agreement": 0.875} |
-| clarity | {"raw_agreement": 0.375, "weighted_kappa": 0.15384615384615385, "weighted_kappa_ci": [-0.18683035714285715, 0.5140992587818236]} |
-| clean_subset | {"binary_kappa": null, "n": 8} |
-| corrupted_subset | {"binary_kappa": null, "n": 8} |
-| n | 16 |
-| n_judged | 16 |
-| n_labeled | 16 |
-| tone | {"raw_agreement": 0.6875, "weighted_kappa": 0.2592592592592593, "weighted_kappa_ci": [-0.17647058823529416, 0.7377049180327868]} |
+| dimension | kappa | 95% CI (bootstrap) | PABAK | raw agreement |
+|---|---|---|---|---|
+| acceptable (accept/reject) | 0.746 | [0.347, 1.000] | 0.750 | 0.875 |
+| tone (1-4, weighted) | 0.091 | [-0.306, 0.636] | n/a | 0.688 |
+| clarity (1-4, weighted) | 0.267 | [-0.065, 0.649] | n/a | 0.562 |
 
-Kappa on n=16 carries a wide CI and is a calibration signal, not a certification.
+By draft class: clean subset kappa 0.600 (n=8, raw 0.875); corrupted subset kappa 0.000 (n=8, raw 0.875). The corrupted-subset kappa is 0 by the constant-rater degeneracy (every corrupted draft is labelled not-acceptable), which is exactly why raw agreement and PABAK are reported alongside kappa.
+
+What this measures: the acceptable dimension is the holistic accept-or-reject call (tone and completeness together), NOT grounding, which is checked by code. Kappa on n=16 carries a wide CI (its upper bound touches 1.0 as a small-sample bootstrap boundary artifact) and is a calibration signal, not a certification.
 <!-- BC:END calibration -->
 
 The shape was predicted before measuring: agreement is high on the grounded accept-or-reject call and low on taste (tone, clarity). Both disagreements on the accept call were the judge being wrong, not the human: it missed an unsupported claim in one draft and invented a problem in a correct one. That is why nothing in this system trusts the judge with arithmetic.
@@ -181,6 +189,25 @@ Total capability gaps: 5.
 
 Every abstention names its category. Five abstentions tracing to missing allocation references is a product backlog item (request remittance advice from clients), not a log curiosity.
 
+### Do two independent grounding paths agree?
+
+<!-- BC:BEGIN oracle_crosscheck -->
+# Independent oracle cross-check
+
+The grounding oracle shares no code with the gate's checkers (it
+replays the raw fixture and reads the draft with its own parsers). It
+is run over every first-pass draft; agreement is a real independent
+confirmation, and any disagreement is a finding, not a shared blind
+spot.
+
+Drafts cross-checked: 20. Gate and oracle agree on the
+clean-or-not verdict: 20/20 (100%).
+
+No disagreements: the two independent paths concur on every draft.
+<!-- BC:END oracle_crosscheck -->
+
+The oracle shares no code with the gate's checkers, so this agreement is a real independent confirmation of the grounding, not a restatement of it. During the live run the cross-check found a figure the oracle did not recognize (an invoice's applied amount in a partial-payment decomposition); that was a gap in the oracle, now fixed, and it is exactly the kind of finding an independent path exists to surface.
+
 ### Model calls
 
 <!-- BC:BEGIN trace_stats -->
@@ -197,7 +224,7 @@ Structured-parse failures: 0
 Total trace lines: 51
 <!-- BC:END trace_stats -->
 
-Zero structured-parse failures across every judge and verifier call: structured outputs use JSON-schema constrained decoding at the endpoint, so malformed JSON is impossible at the decoder rather than retried after the fact.
+Zero structured-parse failures across every judge and verifier call. Structured outputs use JSON-schema constrained decoding at the endpoint, with a validate-and-retry fallback in the client, and the observed malformed rate was zero. Constrained decoding makes malformed JSON very unlikely at the decoder; the retry path is the belt-and-braces behind it.
 
 ## How it works
 
@@ -226,11 +253,13 @@ One artifact type, complete: the balance-due client reply. The loop is:
 3. **Check.** Every extracted claim is verified against the ledger by code. Only soft claims (things like "as we discussed") go to a model verifier, which sees one sentence and the records, never the rest of the draft. Two aggregate checks then look at the draft as a whole: the itemized amounts must be consistent with the totals, and required content (the balance, the open invoices, any unapplied money) must actually be present.
 4. **Decide.** A fixed rule table picks one of four outcomes: revise (with the exact correction), abstain (the records cannot support any trustworthy draft), escalate (a human must look), or pass to the human gate. Nothing is ever auto-sent.
 5. **Learn.** Approved and edited drafts enter a memory keyed by ledger structure (unapplied cash, partial payments, open credits, and so on). The next run retrieves the most relevant examples into the prompt. Evaluation scenarios are a held-out pool that never enters memory, enforced by test.
-6. **Prove.** Reports are generated only from the event log. The before and after runs differ by exactly one thing, the memory state, and the run manifests show it as a two-line diff.
+6. **Prove.** Reports are generated only from the event log. The controlled treatment difference between the before and after runs is the memory snapshot and the retrieved context it produces; the model, seed, evaluation fixtures, static prompt files, and configuration are held fixed, which the run manifests record (the manifests also carry the run id, pass label, and retrieval mode, which necessarily differ). The model is pinned by its served identifier; the endpoint does not expose a content digest, so this is an identifier, not a hash.
 
 ## What the red team changed
 
-Before the live runs, six reviewers attacked the system by executing it. The statistics, the ledger arithmetic, and the decision table held. The extraction layer did not: 18 of 23 crafted wrong drafts initially walked through to the human gate. Every escape path was closed and the full attack corpus is now a regression test (`tests/test_adversarial_regressions.py`); the re-measured escape rate is zero, with no true sentence wrongly condemned. The second live run then exposed a subtler class, drafts made only of true claims that mislead as a whole (a correct total beside an itemization that contradicts it; a credit memo silently omitted). Two aggregate gate checks now catch both, locked in by tests that reproduce the exact live escapes.
+Before the live runs, an execution-based adversarial review (six independent reviewers, a pre-hardening session whose figures are historical and not reconstructible from this repository) attacked the system. The statistics, the ledger arithmetic, and the decision table held. The extraction layer did not: 18 of 23 crafted wrong drafts initially walked through to the human gate. Every escape path was closed and the full attack corpus is now a regression test (`tests/test_adversarial_regressions.py`); the re-measured escape rate is zero, with no true sentence wrongly condemned. The second live run then exposed a subtler class, drafts made only of true claims that mislead as a whole (a correct total beside an itemization that contradicts it; a credit memo silently omitted). Two aggregate gate checks now catch both, locked in by tests that reproduce the exact live escapes.
+
+A later, deeper review found that those checks and the ones added to fix them shared a root cause: the checkers re-derived which document and which figure an amount referred to from brittle substring heuristics, which failed in both directions (a per-invoice amount forced against the account total; a wrong amount accepted because it coincided with the invoice's original amount; a status word cross-multiplied across two invoices into invented claims). The extractor now binds each claim to the document and the ledger role (open, original, applied, or account total) its phrasing names, and the checkers verify exactly that figure; the whole family of false accepts and false rejects is closed and locked in by `tests/test_binding_regressions.py`. The same review found that "revise and re-check" had never actually run end to end (the model's first drafts always passed, so the revision path was dead), that the completeness metric counted token presence rather than verified claims, and that the independent oracle was never invoked in the harness. All three are fixed and covered by `tests/test_revise_loop_e2e.py`, the semantic completeness in `bench/score.py`, and the oracle cross-check that now runs over every draft (the two independent grounding paths agree on all of them).
 
 ## Design decisions worth defending
 
@@ -244,6 +273,14 @@ Before the live runs, six reviewers attacked the system by executing it. The sta
 | The eval has its own oracle | The harness grounds drafts with an independently written checker that shares no code with the gate, so a gate blind spot cannot hide in the eval |
 | Blind labels, committed first | The calibration labels were written against a shuffled set with the corruption map sealed, and committed before the judge ever ran |
 | Judge disagreements count as ties | The pairwise comparison runs in both orders; any flip is a tie, and the flip rate is reported as an upper bound on position bias |
+
+## Assumptions
+
+- The ledger is trusted ground truth. This system verifies drafts about the ledger; it does not reconcile the ledger itself. A wrong figure in the fixtures would fool both the gate and the oracle (they share the fixture, not the code).
+- The client-reply artifact is a short prose email. The extractor is tuned for that register (one document per bullet, canonical IDs, dollar and ISO-date forms); a very different format would need its detectors widened.
+- The drafter transcribes numbers that code computes and hands it; it is never asked to do arithmetic. The design assumes a small local model can transcribe and explain, not that it can calculate.
+- The judge assesses only what code cannot (tone, completeness of explanation, an overall accept or reject). Grounding is never delegated to it.
+- The calibration and before/after runs are single-sample at temperature zero on a small held-out pool; they are read as direction, not as statistically significant effects (see the blind-spots section).
 
 ## What was cut, and said so
 

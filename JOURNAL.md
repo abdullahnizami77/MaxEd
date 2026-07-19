@@ -1,86 +1,18 @@
 # Decision journal
 
-Contemporaneous notes, appended as the work happens. Newest at the bottom.
+Fourteen bullets across the build, the live runs, and two rounds of review.
 
-## Day 1, morning: plan and foundation
-
-- Assumed the brief's "one or two synthetic clients with a 20-40 transaction
-  ledger" is best served by 12 small scenario snapshots (two clients, six
-  deliberate structures each, pools A and B) rather than one big ledger: the
-  learning loop needs a held-out pool, and the error taxonomy needs each
-  structure isolated. Stated as a re-slice in the README.
-- Endpoint probe before any code: the served model leaks its thinking
-  process into content by default. chat_template_kwargs enable_thinking
-  false fixes it, and vLLM honors response_format json_schema, so structured
-  judge and verifier calls are schema-constrained at the decoder. That
-  single probe retired the plan's biggest small-model risk (malformed JSON)
-  before a line of the judge existed.
-- Dead end avoided narrowly: the first sketch of whole_percent tried to be
-  clever with a single expression and was wrong at the half boundary;
-  rewrote it as plain divmod plus an explicit half-even branch. Lesson:
-  money code wants boring shapes.
-- Wrote the contracts, money, derive, event spine, trace hook, and model
-  client by hand before delegating anything: the parallel builders code
-  against frozen interfaces, which is what keeps seven concurrent authors
-  from drifting.
-- The net-balance semantics decision (open invoices minus unapplied cash
-  minus unapplied credits) is the load-bearing domain call; it makes the
-  Tier 2 naive misreading ("sum the unpaid invoices") a computable FAIL
-  rather than a judgment call.
-
-## Day 1, afternoon: parallel build
-
-- Fanned out seven builders (foundry, drafting, checks and gate, memory,
-  deterministic bench, judge bench, report) with disjoint file ownership and
-  per-builder hermetic tests; integration and the runner stayed with the
-  integrator. AI tooling note: the fan-out only became safe after the
-  interfaces were frozen by hand; an earlier attempt to let builders define
-  their own contracts is exactly how interface drift happens.
-- Wrote the runner, CLI, golden-draft renderer, and Makefile while builders
-  ran. The golden draft (correct-by-construction from ledger truth) turned
-  out to be the keystone piece: it is at once the stub response, the Tier 1
-  corruption substrate, and the checks-versus-oracle cross-battery input.
-
-## Day 2, morning: adversarial review and hardening
-
-- Six execution-based reviewers attacked the built system. The statistics,
-  arithmetic, and decision table held; the extraction seam did not: 18 of
-  23 crafted wrong drafts reached the human gate. The lesson that stings
-  usefully: the layer everyone writes last (parsing prose) is the layer
-  everything else trusts first.
-- Fixed by making unattributed amounts context-strict, broadening document
-  reference detection, adding paid-paraphrases, and catching marker-free
-  money shapes. Escape rate re-measured at zero with no true sentence
-  wrongly condemned; the whole corpus is now a regression test.
-- Dead end worth recording: a background fix workflow died with the session
-  overnight and left nothing recoverable; redoing the fixes inline took an
-  hour. Lesson: durable state belongs in files and commits, not in process
-  memory, which is also the thesis of this system's event log.
-
-## Day 2, afternoon: the live runs
-
-- The live error run exposed my own harness bug: a credit-memo misreading
-  instruction was pointed at a scenario with no credit memos, proving
-  nothing. Each naive instruction now targets the structure it attacks.
-- The subtler live finding: the drafter transcribes correct totals from the
-  ledger block even under naive instructions, so wrongness shows up as
-  framing (full amounts presented as owed, credits silently omitted), not
-  as bad numbers. Added two aggregate gate rows: itemization consistency
-  and required-content completeness. Claim checks see claims; only the gate
-  can see what is missing.
-- My own verifier rejected my own Pool A edits twice: a decomposition
-  sentence (originally X, paid Y, leaving Z) tripped the open-amount rule,
-  and the word "confirm" tripped the fuzzy lexicon. Fixed the first in the
-  checker (the phrasing is exactly what a good partial-payment reply should
-  say), reworded the second. A system that makes its own author revise is
-  working.
-- The learning loop closed visibly: pass2 drafts on the held-out pool
-  greeted the client by name, itemized with dates, and explained unapplied
-  cash, none of which pass1 did, all while staying fully verified. Verified
-  claim density rose from 36 to 62 across the same six scenarios.
-- Judge calibration matched the pre-registered shape (high agreement on
-  accept-or-reject, noise on tone), and both accept-call disagreements were
-  judge errors, which is the argument for numbers-by-code stated as data.
-- AI tools note: parallel builder agents against frozen contracts produced
-  zero interface drift across seven modules; the same approach without
-  frozen contracts failed in an earlier project. The freeze is the feature.
+- Sliced the brief to one artifact (the balance-due client reply) and built the substrate as 12 small scenario snapshots (two clients, six deliberate ledger structures, held-out Pool B) rather than one big ledger, because the learning loop needs a held-out pool and the error taxonomy needs each structure isolated.
+- Probed the endpoint before writing any code: the served model leaks its reasoning into the content by default (fixed with enable_thinking false) and honors JSON-schema constrained decoding. That single probe retired the biggest small-model risk (malformed JSON) before the judge existed.
+- Made net balance = open invoices minus unapplied cash minus unapplied credits the load-bearing domain decision; it turns the naive "sum the unpaid invoices" misreading into a computable failure rather than a judgment call.
+- Wrote the contracts, money, derive, event spine, and trace hook by hand, then fanned out seven builder agents against those frozen interfaces. Zero interface drift across seven modules; an earlier project that let builders define their own contracts drifted badly, so the freeze is the feature.
+- The golden draft (correct-by-construction from ledger truth) became the keystone: it is at once the stub response, the Tier 1 corruption substrate, and the checks-versus-oracle cross-battery input.
+- Dead end, recorded: a background fix workflow died with a session overnight and left nothing recoverable. Redoing the work inline cost an hour. The lesson (durable state belongs in files and commits, not process memory) is the thesis of this system's own event log.
+- First adversarial review (six execution-based reviewers): the statistics, arithmetic, and decision table held; the extraction seam let 18 of 23 crafted wrong drafts reach the human gate. The layer written last (parsing prose) is the layer everything trusts first.
+- The live error run exposed a class the claim checks could not see: the drafter transcribes correct totals even under naive instructions, so wrongness shows up as framing (full amounts presented as owed, a credit silently omitted). Added two aggregate gate rows (itemization consistency, completeness).
+- The learning loop closed visibly on the held-out pool: pass2 drafts greeted the client by name, itemized with dates, and explained unapplied cash, none of which pass1 did, while staying fully grounded. The pass2R random-memory ablation did worse on the structure-specific behaviour, which is the evidence that retrieval quality (not just having examples) matters.
+- Judge calibration matched the pre-registered shape: high agreement on the accept-or-reject call, noise on tone. Both accept-call disagreements were the judge being wrong, which is the argument for numbers-by-code stated as data.
+- Second, deeper review (self-directed, plus the reviewer's own ten findings): every one held up, and two were bugs my own hardening had introduced. Where the first review was asymmetric (it hunted wrong-drafts-passing), this one hunted the opposite direction too, true drafts wrongly rejected, and drove the revise loop end to end.
+- Root cause behind nine of the checker findings: the checkers re-derived which document and which figure an amount meant from brittle substring heuristics. Rebuilt the extractor to bind each claim to a document and a role (open, original, applied, total); the checkers now verify exactly the named figure, closing the false accepts and false rejects together.
+- The sharpest single finding: "revise and re-check" had never run end to end, because the model's first drafts always passed, so the revision path was dead code that looked alive. It now has a programmable-stub test that drives a wrong draft through a real correction to convergence.
+- AI tools, net: the multi-agent reviews found real bugs I had missed (including ones I introduced while fixing earlier ones), but only execution-based reviewers that ran the code were trustworthy; a review that reasons without running misses exactly the input shapes the golden drafts never take.
