@@ -114,8 +114,6 @@
     "failed_statuses": [
       "fail",
       "fail",
-      "fail",
-      "fail",
       "unverifiable"
     ],
     "claims_total": 12,
@@ -132,8 +130,6 @@
     "decision_action": "escalate",
     "decision_reason": "fabricated document reference",
     "failed_statuses": [
-      "fail",
-      "fail",
       "fail",
       "fail",
       "unverifiable"

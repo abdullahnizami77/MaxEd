@@ -28,7 +28,7 @@
       "clarity": 4,
       "clarity_span": "It already reduces the balance above.",
       "acceptable": true,
-      "acceptable_rationale": "The draft clearly lists the open invoices, explains the unapplied credit, and states the net balance due, providing a complete and courteous explanation."
+      "acceptable_rationale": "The draft clearly lists the open invoices, explains the unapplied credit memo, and correctly states the net balance due, providing a complete and courteous explanation."
     },
     "parse_ok": true
   },
@@ -125,9 +125,9 @@
       "tone": 4,
       "tone_span": "Thank you for your attention to this matter.",
       "clarity": 4,
-      "clarity_span": "The following invoices are open:",
+      "clarity_span": "The balance due on your account is $10,875.50, made up of the following open invoices:",
       "acceptable": true,
-      "acceptable_rationale": "The draft clearly lists the open invoices, explains the balance composition, and invites the client to dispute any discrepancies, making it complete and courteous."
+      "acceptable_rationale": "The draft clearly explains the total balance due by itemizing the specific open invoices and their statuses, providing a complete and courteous explanation."
     },
     "parse_ok": true
   },
