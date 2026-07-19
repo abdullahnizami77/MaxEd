@@ -26,6 +26,16 @@ class Config:
     seed: int = 20260718
     timeout_s: float = 240.0
     max_attempts: int = 3
+    # Agentic revision recovery (off by default: the fast path is unchanged).
+    # "prompt" replays the existing single-call revision; "agentic" lets a
+    # bounded, read-only tool-using agent produce the revision instead. The
+    # agent never decides: its draft goes back through extract/check/decide.
+    revision_mode: str = "prompt"  # "prompt" | "agentic"
+    agentic_max_recoveries: int = 1
+    agentic_max_rounds: int = 2
+    agentic_max_calls_per_round: int = 3
+    agentic_max_total_tool_calls: int = 6
+    agentic_max_tokens: int = 1600
 
 
 def load_config(**overrides) -> Config:
@@ -38,6 +48,12 @@ def load_config(**overrides) -> Config:
         "seed": int(os.environ.get("BC_SEED", "20260718")),
         "timeout_s": float(os.environ.get("BC_TIMEOUT_S", "240")),
         "max_attempts": int(os.environ.get("BC_MAX_ATTEMPTS", "3")),
+        "revision_mode": os.environ.get("BC_REVISION_MODE", "prompt"),
+        "agentic_max_recoveries": int(os.environ.get("BC_AGENTIC_MAX_RECOVERIES", "1")),
+        "agentic_max_rounds": int(os.environ.get("BC_AGENTIC_MAX_ROUNDS", "2")),
+        "agentic_max_calls_per_round": int(os.environ.get("BC_AGENTIC_MAX_CALLS_PER_ROUND", "3")),
+        "agentic_max_total_tool_calls": int(os.environ.get("BC_AGENTIC_MAX_TOTAL_TOOL_CALLS", "6")),
+        "agentic_max_tokens": int(os.environ.get("BC_AGENTIC_MAX_TOKENS", "1600")),
     }
     if "BC_LOG" in os.environ:
         env["log_path"] = Path(os.environ["BC_LOG"])
@@ -49,4 +65,14 @@ def load_config(**overrides) -> Config:
         raise ValueError("BC_MODE=live requires BC_BASE_URL to be set")
     if cfg.mode not in ("stub", "live"):
         raise ValueError(f"unknown BC_MODE {cfg.mode!r}; expected 'stub' or 'live'")
+    if cfg.revision_mode not in ("prompt", "agentic"):
+        raise ValueError(
+            f"unknown BC_REVISION_MODE {cfg.revision_mode!r}; expected 'prompt' or 'agentic'"
+        )
+    if cfg.revision_mode == "agentic" and cfg.mode == "stub":
+        # The agent's tool choices are model behaviour; canned stubs would
+        # fake exactly the thing being evaluated. Orchestration is unit
+        # tested with scripted clients instead (tests construct Config
+        # directly, which this env-driven guard does not restrict).
+        raise ValueError("BC_REVISION_MODE=agentic requires BC_MODE=live")
     return cfg
