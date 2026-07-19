@@ -681,6 +681,136 @@ def cmd_bench_pairwise(_args) -> int:
 # ---------------------------------------------------------------------------
 
 
+def cmd_recovery_bench(_args) -> int:
+    """The agentic-recovery ablation: identical correctable r0 failures are
+    revised once by each backend (prompt and agentic), and the same
+    deterministic verifier judges both. Live only: the agent's tool choices
+    are model behaviour, and canned stubs would fake exactly the thing being
+    measured. Events go to a separate log so the canonical learning-loop
+    record stays untouched."""
+    base_cfg = load_config()
+    if base_cfg.mode != "live":
+        print("recovery-bench requires BC_MODE=live (the agent's tool choices are model behaviour)")
+        return 1
+
+    import dataclasses
+    import hashlib as _hashlib
+
+    from balancecheck.bench.corrupt import break_sum, swap_amount
+    from balancecheck.checks.checks import check_all
+    from balancecheck.drafting.agentic import generate_agentic_revision
+    from balancecheck.drafting.drafter import generate_draft
+    from balancecheck.drafting.golden import golden_draft
+    from balancecheck.drafting.surface import extract_claims
+    from balancecheck.gate.policy import decide
+    from balancecheck.runner import _failed_subject_ids
+    from balancecheck.substrate.money import cents, render
+    from balancecheck.substrate import derive as _derive
+    cfg = dataclasses.replace(base_cfg, log_path=REPO_ROOT / "log" / "recovery_events.jsonl")
+    run_id = new_run_id("recovery")
+    _emit_run_start(cfg, run_id, "recovery", "A", "empty")
+    client = _client(cfg, run_id)
+
+    # The correctable-failure corpus: r0 drafts the gate can send back for
+    # revision. Fabricated references are excluded (they escalate at r0 by
+    # design, so no revision path ever sees them).
+    cases: list[tuple[str, str, str, str]] = []  # (case_id, scenario_id, failure_kind, draft)
+    for sid in ("S-A-01", "S-A-02", "S-A-03", "S-A-04", "S-A-05"):
+        ledger = _load_ledger(sid)
+        good = golden_draft(ledger)
+        for kind, fn in (("swap_amount", swap_amount), ("break_sum", break_sum)):
+            corrupted = fn(good, ledger)
+            if corrupted is not None:
+                cases.append((f"{kind}-{sid}", sid, kind, corrupted.draft))
+    for sid, kind, doc_ids in (
+        ("S-A-04", "credit_omitted", lambda l: [c.id for c in l.credit_memos]),
+        ("S-A-02", "unapplied_omitted", lambda l: [p.id for p in l.payments if _derive.unapplied_amount(l, p.id) > 0]),
+    ):
+        ledger = _load_ledger(sid)
+        ids = doc_ids(ledger)
+        stripped = "\n".join(
+            line for line in golden_draft(ledger).splitlines()
+            if not any(d in line for d in ids)
+        )
+        cases.append((f"{kind}-{sid}", sid, kind, stripped))
+    ledger = _load_ledger("S-A-03")
+    lines = [f"Dear {ledger.client.name} team,", "",
+             f"The balance due on your account is {render(_derive.net_balance(ledger))}.", "",
+             "The following invoices are open:"]
+    for inv in ledger.invoices:
+        if _derive.open_amount(ledger, inv.id) > 0:
+            lines.append(f"* {inv.id}: {render(cents(inv.amount_cents))}")
+    lines += ["", "Please reply if any of these figures do not match your records.", "",
+              "Kind regards,", "Accounts Receivable"]
+    cases.append(("full_amounts-S-A-03", "S-A-03", "itemization_full_amounts", "\n".join(lines)))
+
+    rows: list[dict] = []
+    for case_id, sid, kind, r0_draft in cases:
+        ledger = _load_ledger(sid)
+        r0_claims = extract_claims(r0_draft, ledger, claim_prefix=f"rec-{case_id}-r0")
+        check_all(r0_claims, ledger, client, stub_key_prefix=f"rec:{case_id}:r0")
+        h0 = _hashlib.sha256(r0_draft.encode()).hexdigest()
+        r0_decision = decide(r0_claims, ledger, revision_index=0, draft_hashes=[h0], draft=r0_draft)
+        if r0_decision.action.value != "revise":
+            print(f"{case_id}: excluded (r0 decision {r0_decision.action.value}, not correctable)")
+            continue
+        correction = r0_decision.payload
+        failed_ids = _failed_subject_ids(r0_claims)
+
+        def _judge(text: str) -> tuple[bool, str]:
+            if not text:
+                return False, "no draft produced"
+            claims = extract_claims(text, ledger, claim_prefix=f"rec-{case_id}-r1")
+            check_all(claims, ledger, client, stub_key_prefix=f"rec:{case_id}:r1")
+            h1 = _hashlib.sha256(text.encode()).hexdigest()
+            d = decide(claims, ledger, revision_index=1, draft_hashes=[h0, h1], draft=text)
+            return d.action.value == "human_gate", d.reason
+
+        # Arm 1: the existing prompt-only revision (one LLM call).
+        pr = generate_draft(
+            client, ledger, [], correction=correction,
+            stub_key=f"rec:{case_id}:prompt:r1", meta={"case": case_id, "arm": "prompt"},
+        )
+        prompt_recovered, prompt_reason = _judge(pr.text)
+
+        # Arm 2: the bounded agentic recovery over the same failure.
+        ar = generate_agentic_revision(
+            client=client, cfg=cfg, ledger=ledger,
+            previous_draft=r0_draft, correction=correction,
+            decision_reason=r0_decision.reason, failed_subject_ids=failed_ids,
+            exemplars=[], gen_id=f"rec-{case_id}-agentic", revision_index=1,
+            run_id=run_id, stub_prefix=f"rec:{case_id}:agentic",
+        )
+        agentic_recovered, agentic_reason = _judge(ar.text)
+
+        rows.append({
+            "case_id": case_id,
+            "scenario_id": sid,
+            "failure_kind": kind,
+            "r0_reason": r0_decision.reason,
+            "prompt_recovered": prompt_recovered,
+            "prompt_final_reason": prompt_reason,
+            "prompt_llm_calls": 1,
+            "agentic_recovered": agentic_recovered,
+            "agentic_final_reason": agentic_reason,
+            "agentic_llm_calls": ar.steps,
+            "agentic_tool_calls": ar.tool_calls_executed,
+            "agentic_forced_final": ar.forced_final,
+            "agentic_coverage_forced": len(ar.coverage_forced),
+        })
+        print(f"{case_id}: prompt={'OK' if prompt_recovered else 'X'} "
+              f"agentic={'OK' if agentic_recovered else 'X'} "
+              f"(agent calls {ar.steps}, tools {ar.tool_calls_executed}, forced_final {ar.forced_final})")
+
+    RAW.mkdir(parents=True, exist_ok=True)
+    (RAW / "recovery_bench.json").write_text(json.dumps(rows, indent=2) + "\n")
+    n = len(rows)
+    if n:
+        print(f"cases: {n}; prompt recovered {sum(r['prompt_recovered'] for r in rows)}/{n}; "
+              f"agentic recovered {sum(r['agentic_recovered'] for r in rows)}/{n}")
+    return 0
+
+
 def cmd_report(_args) -> int:
     from balancecheck.spine.report import write_all
 
@@ -746,6 +876,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("bench-judge")
     sub.add_parser("bench-agree")
     sub.add_parser("bench-pairwise")
+    sub.add_parser("recovery-bench")
     sub.add_parser("report")
     sub.add_parser("readme-inject")
     sub.add_parser("verify-report-determinism")
@@ -762,6 +893,7 @@ def main(argv: list[str] | None = None) -> int:
         "bench-judge": cmd_bench_judge,
         "bench-agree": cmd_bench_agree,
         "bench-pairwise": cmd_bench_pairwise,
+        "recovery-bench": cmd_recovery_bench,
         "report": cmd_report,
         "readme-inject": cmd_readme_inject,
         "verify-report-determinism": cmd_verify_report_determinism,

@@ -226,6 +226,63 @@ Total trace lines: 51
 
 Zero structured-parse failures across every judge and verifier call. Structured outputs use JSON-schema constrained decoding at the endpoint, with a validate-and-retry fallback in the client, and the observed malformed rate was zero. Constrained decoding makes malformed JSON very unlikely at the decoder; the retry path is the belt-and-braces behind it.
 
+## Agentic revision recovery (optional runtime path)
+
+The loop above is the fast path: one inexpensive drafting call over facts code
+already computed, verified deterministically. An optional recovery path
+(off by default, BC_REVISION_MODE=agentic) spends more model effort only after
+the gate finds a correctable failure: a bounded agent may call six read-only
+accounting tools (account summary, open invoices, a single invoice, unapplied
+sources, a single source, application history) to gather ledger evidence, then
+writes the corrected draft. Budgets are strict: one recovery per scenario, at
+most three agent calls and six tool executions, then a forced final; a
+recovery that still fails escalates to a human, never loops. The agent cannot
+approve, send, or decide: its draft goes back through the same extraction,
+checks, and gate, and the human gate remains the only successful terminal
+state. Every tool attempt is a typed event in the log.
+
+The ablation below ran identical correctable first drafts through both
+revision backends, judged by the same verifier:
+
+<!-- BC:BEGIN agentic_recovery -->
+# Agentic recovery ablation
+
+Identical correctable first drafts were revised once by the prompt
+backend (one LLM call carrying the gate's correction) and once by the
+bounded agentic backend (up to three LLM calls and six read-only tool
+calls); the same extract, check, and decide pipeline judged both. The
+agent never approves its own work and HUMAN_GATE remains the only
+successful terminal state.
+
+| case | failure | prompt arm | agentic arm | agent LLM calls | tool calls | forced final |
+|---|---|---|---|---|---|---|
+| swap_amount-S-A-01 | swap_amount | recovered | recovered | 2 | 3 | no |
+| break_sum-S-A-01 | break_sum | recovered | recovered | 2 | 2 | no |
+| swap_amount-S-A-02 | swap_amount | recovered | recovered | 3 | 4 | yes |
+| break_sum-S-A-02 | break_sum | recovered | recovered | 2 | 3 | no |
+| swap_amount-S-A-03 | swap_amount | recovered | recovered | 2 | 3 | no |
+| break_sum-S-A-03 | break_sum | recovered | recovered | 2 | 2 | no |
+| swap_amount-S-A-04 | swap_amount | recovered | recovered | 3 | 4 | yes |
+| break_sum-S-A-04 | break_sum | recovered | recovered | 2 | 3 | no |
+| swap_amount-S-A-05 | swap_amount | recovered | recovered | 2 | 3 | no |
+| break_sum-S-A-05 | break_sum | recovered | recovered | 2 | 2 | no |
+| credit_omitted-S-A-04 | credit_omitted | recovered | recovered | 2 | 3 | no |
+| unapplied_omitted-S-A-02 | unapplied_omitted | recovered | recovered | 2 | 3 | no |
+| full_amounts-S-A-03 | itemization_full_amounts | recovered | recovered | 2 | 2 | no |
+
+Recovery rate: prompt 13/13 (100%), agentic 13/13 (100%).
+Agentic cost: 28 agent LLM calls and 37 tool calls across 13 recoveries (2.1 calls and 2.8 tools per recovery on average).
+Forced-final rate: 2/13 (15%). A forced final means the model did not gather sufficient evidence unaided and the orchestrator executed the missing required tools deterministically before demanding the final draft: it is the honest measure of how much of the agency is the model's own.
+Cost framing: the prompt arm spends 1 LLM call per recovery; the agentic arm spent 2.1 on average plus tools. The fast path (a clean first draft) uses one call and zero tools in both modes.
+<!-- BC:END agentic_recovery -->
+
+The forced-final rate is the honest small-model measure: it counts recoveries
+where the model did not gather the required evidence unaided and the
+orchestrator had to execute the missing tools deterministically before the
+final draft. On a small model the recovery path partly degrades toward
+deterministic evidence-gathering plus one drafting call, which is stated here
+rather than hidden.
+
 ## How it works
 
 ```mermaid

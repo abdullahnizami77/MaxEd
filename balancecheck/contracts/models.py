@@ -293,6 +293,12 @@ class GenerationEvent(EventBase):
     draft: str
     revision_index: int           # 0 = first pass
     is_first_pass: bool
+    # How this draft was produced: the cheap single-call path, a prompt-only
+    # revision, or a bounded tool-using agentic recovery. Defaults keep
+    # pre-existing log lines parseable.
+    generation_mode: Literal[
+        "prompt_initial", "prompt_revision", "agentic_recovery"
+    ] = "prompt_initial"
 
 
 class VerificationEvent(EventBase):
@@ -360,6 +366,28 @@ class JudgmentEvent(EventBase):
     judge_model: str = ""
 
 
+class ToolCallEvent(EventBase):
+    """One line per attempted agent tool call, including validation failures.
+
+    The agentic recovery path may inspect the ledger through read-only tools;
+    every attempt is a typed record so the log shows exactly which evidence
+    the agent requested and what it received.
+    """
+
+    event_type: Literal["tool_call"] = "tool_call"
+    gen_id: str
+    revision_index: int
+    round_index: int              # -1 marks coverage tools executed by code,
+                                  # not chosen by the model (the forced-final
+                                  # evidence backstop)
+    call_index: int
+    tool_name: str
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    result: dict[str, Any] = Field(default_factory=dict)
+    ok: bool
+    error: str = ""
+
+
 class TraceEvent(EventBase):
     """One line per model-call attempt, drafts and judge alike (invariant I6).
 
@@ -390,6 +418,7 @@ Event = Annotated[
         IngestEvent,
         ScoreEvent,
         JudgmentEvent,
+        ToolCallEvent,
         TraceEvent,
     ],
     Field(discriminator="event_type"),

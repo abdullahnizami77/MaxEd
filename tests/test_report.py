@@ -202,6 +202,7 @@ def test_write_all_is_deterministic(populated, tmp_path: Path) -> None:
     assert set(written1) == set(written2)
     names = sorted(p.name for p in dir1.glob("*.md"))
     assert names == [
+        "agentic_recovery.md",
         "before_after.md",
         "calibration.md",
         "capability_gaps.md",

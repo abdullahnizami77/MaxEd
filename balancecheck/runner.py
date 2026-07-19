@@ -17,6 +17,7 @@ from balancecheck.checks.checks import check_all
 from balancecheck.config import Config
 from balancecheck.contracts.models import (
     GateAction,
+    GateDecision,
     GenerationEvent,
     Ledger,
     VerificationEvent,
@@ -30,6 +31,12 @@ from balancecheck.spine.events import append_event
 from balancecheck.substrate import derive
 
 MAX_REVISIONS = 2
+
+# The terminal reason when the single bounded agentic recovery still leaves
+# a draft needing revision (or produced none): never loop, always hand to a
+# human. gate/gaps.py maps unrecognized escalate reasons to OTHER, so the
+# capability-gap record still emits.
+AGENTIC_EXHAUSTED = "agentic_recovery_exhausted"
 
 
 @dataclass
@@ -95,17 +102,99 @@ def run_scenario(
     exemplars = list(memory.retrieve(derive.signature(ledger), 3)) if memory else []
     draft_hashes: list[str] = []
     correction = ""
+    previous_draft = ""
+    previous_reason = ""
+    previous_failed_ids: list[str] = []
+    agentic_recoveries = 0
+
+    def _terminal(gen_id, decision, claims, draft, rev):
+        gap = derive_gap(decision, ledger, gen_id)
+        if gap is not None:
+            gap.run_id = run_id
+            append_event(gap, cfg.log_path)
+        append_event(
+            build_score_event(
+                gen_id=gen_id,
+                scenario_id=ledger.scenario_id,
+                pass_label=pass_label,
+                stage="final",
+                claims=claims,
+                draft=draft,
+                ledger=ledger,
+                revision_count=rev,
+                terminal_action=decision.action.value,
+                run_id=run_id,
+            ),
+            cfg.log_path,
+        )
+        return ScenarioOutcome(
+            scenario_id=ledger.scenario_id,
+            gen_id=gen_id,
+            terminal_action=decision.action.value,
+            final_draft=draft,
+            revision_count=rev,
+            reason=decision.reason,
+        )
 
     for rev in range(MAX_REVISIONS + 1):
         gen_id = f"{gen_base}-r{rev}"
-        result = generate_draft(
-            client,
-            ledger,
-            exemplars,
-            correction=correction,
-            stub_key=f"{stub_prefix}:{ledger.scenario_id}:draft:{rev}",
-            meta={"gen_id": gen_id, "pass_label": pass_label},
-        )
+
+        if rev == 0:
+            generation_mode = "prompt_initial"
+        elif (
+            cfg.revision_mode == "agentic"
+            and agentic_recoveries < cfg.agentic_max_recoveries
+        ):
+            generation_mode = "agentic_recovery"
+        else:
+            generation_mode = "prompt_revision"
+
+        if generation_mode == "agentic_recovery":
+            from balancecheck.drafting.agentic import generate_agentic_revision
+
+            agentic_recoveries += 1
+            ar = generate_agentic_revision(
+                client=client,
+                cfg=cfg,
+                ledger=ledger,
+                previous_draft=previous_draft,
+                correction=correction,
+                decision_reason=previous_reason,
+                failed_subject_ids=previous_failed_ids,
+                exemplars=exemplars,
+                gen_id=gen_id,
+                revision_index=rev,
+                run_id=run_id,
+                stub_prefix=stub_prefix,
+            )
+            if not ar.text:
+                # The bounded agent could not produce a draft within its
+                # budgets. Nothing is retried autonomously; the scenario
+                # escalates to a human with the last correction attached.
+                decision = GateDecision(
+                    action=GateAction.ESCALATE,
+                    reason=AGENTIC_EXHAUSTED,
+                    payload=correction,
+                )
+                append_event(
+                    VerificationEvent(
+                        gen_id=gen_id, claims=[], decision=decision, run_id=run_id
+                    ),
+                    cfg.log_path,
+                )
+                return _terminal(gen_id, decision, [], "", rev)
+            draft_text, prompt_sha = ar.text, ar.prompt_sha
+        else:
+            result = generate_draft(
+                client,
+                ledger,
+                exemplars,
+                correction=correction,
+                stub_key=f"{stub_prefix}:{ledger.scenario_id}:draft:{rev}",
+                meta={"gen_id": gen_id, "pass_label": pass_label},
+            )
+            draft_text, prompt_sha = result.text, result.prompt_sha
+
         append_event(
             GenerationEvent(
                 gen_id=gen_id,
@@ -113,26 +202,43 @@ def run_scenario(
                 pool=ledger.pool,
                 pass_label=pass_label,
                 ledger_ref=ledger.ref(),
-                prompt_sha=result.prompt_sha,
-                draft=result.text,
+                prompt_sha=prompt_sha,
+                draft=draft_text,
                 revision_index=rev,
                 is_first_pass=rev == 0,
+                generation_mode=generation_mode,
                 run_id=run_id,
             ),
             cfg.log_path,
         )
-        claims = extract_claims(result.text, ledger, claim_prefix=gen_id)
+        claims = extract_claims(draft_text, ledger, claim_prefix=gen_id)
         check_all(
             claims,
             ledger,
             client,
             stub_key_prefix=f"{stub_prefix}:{ledger.scenario_id}:r{rev}",
         )
-        draft_hashes.append(hashlib.sha256(result.text.encode()).hexdigest())
+        draft_hashes.append(hashlib.sha256(draft_text.encode()).hexdigest())
         decision = decide(
             claims, ledger, revision_index=rev, draft_hashes=draft_hashes,
-            draft=result.text,
+            draft=draft_text,
         )
+        # In agentic mode there is exactly one bounded recovery: a draft that
+        # still needs revision after it terminates as an escalation rather
+        # than looping. The conversion happens before the decision is logged,
+        # so the record shows the decision that actually governed.
+        if (
+            decision.action == GateAction.REVISE
+            and cfg.revision_mode == "agentic"
+            and agentic_recoveries >= cfg.agentic_max_recoveries
+            and rev > 0
+        ):
+            decision = GateDecision(
+                action=GateAction.ESCALATE,
+                reason=AGENTIC_EXHAUSTED,
+                findings=decision.findings,
+                payload=decision.payload,
+            )
         append_event(
             VerificationEvent(gen_id=gen_id, claims=claims, decision=decision, run_id=run_id),
             cfg.log_path,
@@ -145,7 +251,7 @@ def run_scenario(
                     pass_label=pass_label,
                     stage="first_pass",
                     claims=claims,
-                    draft=result.text,
+                    draft=draft_text,
                     ledger=ledger,
                     revision_count=0,
                     terminal_action=decision.action.value,
@@ -161,37 +267,27 @@ def run_scenario(
             # would send an empty correction for whole-draft failures, which
             # have no failed individual claim.
             correction = decision.payload
+            previous_draft = draft_text
+            previous_reason = decision.reason
+            previous_failed_ids = _failed_subject_ids(claims)
             continue
 
-        gap = derive_gap(decision, ledger, gen_id)
-        if gap is not None:
-            gap.run_id = run_id
-            append_event(gap, cfg.log_path)
-        append_event(
-            build_score_event(
-                gen_id=gen_id,
-                scenario_id=ledger.scenario_id,
-                pass_label=pass_label,
-                stage="final",
-                claims=claims,
-                draft=result.text,
-                ledger=ledger,
-                revision_count=rev,
-                terminal_action=decision.action.value,
-                run_id=run_id,
-            ),
-            cfg.log_path,
-        )
-        return ScenarioOutcome(
-            scenario_id=ledger.scenario_id,
-            gen_id=gen_id,
-            terminal_action=decision.action.value,
-            final_draft=result.text,
-            revision_count=rev,
-            reason=decision.reason,
-        )
+        return _terminal(gen_id, decision, claims, draft_text, rev)
 
     raise RuntimeError(
         "revision loop exceeded its budget without a terminal decision; "
         "policy.decide must escalate at the budget boundary"
     )
+
+
+def _failed_subject_ids(claims) -> list[str]:
+    """Documents named by claims that did not pass, for the agent's required
+    evidence coverage (deduplicated, reading order)."""
+    out: list[str] = []
+    for c in claims:
+        if c.check_result is None or c.check_result.status.value == "pass":
+            continue
+        for sid in c.subject_ids or ([c.subject_id] if c.subject_id else []):
+            if sid and sid not in out:
+                out.append(sid)
+    return out
