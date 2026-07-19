@@ -1,0 +1,82 @@
+[
+  {
+    "item_id": "C-01",
+    "scenario_id": "S-A-04",
+    "draft": "Dear Client Contact,\n\nThank you for your time. I am writing to provide a summary of the current account status for Harbor & Finch Design Co. as of 2026-03-31.\n\nThe total balance due is $14,100.00.\n\nThe following invoices remain open:\n*   INV-3121: $3,750.00\n*   INV-3139: $11,200.00\n\nPlease note that credit memos are treated as applied and are not listed separately.\n\nIf you have any questions regarding these records, please let us know.\n\nAccounts Receivable"
+  },
+  {
+    "item_id": "C-02",
+    "scenario_id": "S-A-02",
+    "draft": "Dear Harbor & Finch Design Co. team,\n\nThank you for reaching out about your account. Here is the current position as of 2026-03-31.\n\nThe balance due on your account is $2,150.00.\n\nThis balance reflects the following open invoices:\n- INV-9000 dated 2026-01-20, due 2026-02-19: $6,300.00 overdue.\n- INV-3014 dated 2026-02-11, due 2026-03-13: $2,150.00 overdue.\n\nWe have received your payment PMT-0265 of $6,300.00, which has not yet been applied to a specific invoice. It is reflected in the balance above.\n\nIf you have questions about any of the items above, please reply to this message and we will be glad to walk through them with you.\n\nKind regards,\nAccounts Receivable"
+  },
+  {
+    "item_id": "C-03",
+    "scenario_id": "S-B-04",
+    "draft": "Dear Bluestem Orchard Supply LLC team,\n\nThank you for your attention to this matter. Here is the position of your account as of 2026-04-30.\n\nThe total balance due is $19,875.50.\n\nThe following invoices are open:\n\n* INV-1465, issued 2026-03-06, due 2026-04-20: $6,850.00 open. This invoice is past due.\n* INV-1492, issued 2026-02-19, due 2026-04-05: $14,300.50 open. This invoice is past due.\n\nAn unapplied credit memo CM-0026 of $1,275.00, issued 2026-04-03, has not yet been applied to an invoice. It already reduces the balance above.\n\nPlease reply if any of these figures do not match your records.\n\nKind regards,\nAccounts Receivable"
+  },
+  {
+    "item_id": "C-04",
+    "scenario_id": "S-A-03",
+    "draft": "Dear Harbor & Finch Design Co. team,\n\nThank you for reaching out about your account. Here is the current position as of 2026-03-31.\n\nThe balance due on your account is $6,650.50.\n\nThis balance reflects the following open invoices:\n- INV-3063 dated 2026-01-15, due 2026-02-14: $5,200.00 overdue.\n- INV-3079 dated 2026-02-26, due 2026-03-28: $1,450.50 overdue.\n\nIf you have questions about any of the items above, please reply to this message and we will be glad to walk through them with you.\n\nKind regards,\nAccounts Receivable\n\nYour account manager approved a waiver of the late fees on this balance."
+  },
+  {
+    "item_id": "C-05",
+    "scenario_id": "S-B-04",
+    "draft": "Dear Client,\n\nThank you for your patience. Based on our account records as of 2026-04-30, your total balance due is $19,875.50.\n\nThe following invoices remain open:\n*   INV-1465: $6,850.00\n*   INV-1492: $14,300.50\n\nWe also note the following unapplied items on your account:\n*   Unapplied payment: PMT-0539, $0.00\n*   Unapplied credit memo: CM-0026, $1,275.00\n\nPlease let us know if you have any questions regarding these details.\n\nAccounts Receivable"
+  },
+  {
+    "item_id": "C-06",
+    "scenario_id": "S-A-03",
+    "draft": "Dear Harbor & Finch Design Co. team,\n\nThank you for reaching out about your account. Here is the current position as of 2026-03-31.\n\nThe balance due on your account is $6,650.50.\n\nThis balance reflects the following open invoices:\n- INV-3063 dated 2026-01-15, due 2026-02-14: $5,200.00 overdue.\n- INV-3079 dated 2026-02-26, due 2026-03-28: $1,450.50 overdue.\n\nIf you have questions about any of the items above, please reply to this message and we will be glad to walk through them with you.\n\nKind regards,\nAccounts Receivable"
+  },
+  {
+    "item_id": "C-07",
+    "scenario_id": "S-A-02",
+    "draft": "Dear Harbor & Finch Design Co. team,\n\nThank you for reaching out about your account. Here is the current position as of 2026-03-31.\n\nThe balance due on your account is $2,160.00.\n\nThis balance reflects the following open invoices:\n- INV-2987 dated 2026-01-20, due 2026-02-19: $6,300.00 overdue.\n- INV-3014 dated 2026-02-11, due 2026-03-13: $2,150.00 overdue.\n\nWe have received your payment PMT-0265 of $6,300.00, which has not yet been applied to a specific invoice. It is reflected in the balance above.\n\nIf you have questions about any of the items above, please reply to this message and we will be glad to walk through them with you.\n\nKind regards,\nAccounts Receivable"
+  },
+  {
+    "item_id": "C-08",
+    "scenario_id": "S-A-04",
+    "draft": "Dear Harbor & Finch Design Co. team,\n\nThank you for reaching out about your account. Here is the current position as of 2026-03-31.\n\nThe balance due on your account is $14,100.00.\n\nThis balance reflects the following open invoices:\n- INV-3121 dated 2026-02-14, due 2026-03-16: $3,750.00 overdue.\n- INV-3139 dated 2026-01-27, due 2026-02-26: $11,200.00 overdue.\n\nAn open credit memo CM-0025 of $850.00 is also reflected in the balance above.\n\nIf you have questions about any of the items above, please reply to this message and we will be glad to walk through them with you.\n\nKind regards,\nAccounts Receivable"
+  },
+  {
+    "item_id": "C-09",
+    "scenario_id": "S-A-01",
+    "draft": "Dear Harbor & Finch Design Co. team,\n\nThank you for reaching out about your account. Here is the current position as of 2026-03-31.\n\nThe balance due on your account is $14,385.50.\n\nThis balance reflects the following open invoices:\n- INV-2943 dated 2026-02-03, due 2026-03-05: $12,400.00 overdue.\n- INV-2959 dated 2026-03-02, due 2026-04-01: $1,975.50 outstanding.\n\nIf you have questions about any of the items above, please reply to this message and we will be glad to walk through them with you.\n\nKind regards,\nAccounts Receivable"
+  },
+  {
+    "item_id": "C-10",
+    "scenario_id": "S-A-02",
+    "draft": "Dear Client Contact,\n\nThank you for your patience. Please find below the details regarding your current account balance as of 2026-03-31.\n\nThe total balance due is $8,450.00.\n\nThis amount consists of the following open invoices:\n*   INV-2987: $6,300.00\n*   INV-3014: $2,150.00\n\nRegarding payments and credits, we note the following unapplied items:\n*   PMT-0265: $6,300.00\n\nThere are no unapplied credit memos.\n\nPlease let us know if you have any questions regarding these records.\n\nAccounts Receivable"
+  },
+  {
+    "item_id": "C-11",
+    "scenario_id": "S-A-01",
+    "draft": "Dear Harbor & Finch Design Co. team,\n\nThank you for reaching out about your account. Here is the current position as of 2026-03-31.\n\nThe balance due on your account is $14,375.50.\n\nThis balance reflects the following open invoices:\n- INV-9000 dated 2026-02-03, due 2026-03-05: $12,400.00 overdue.\n- INV-2959 dated 2026-03-02, due 2026-04-01: $1,975.50 outstanding.\n\nIf you have questions about any of the items above, please reply to this message and we will be glad to walk through them with you.\n\nKind regards,\nAccounts Receivable"
+  },
+  {
+    "item_id": "C-12",
+    "scenario_id": "S-B-03",
+    "draft": "Dear Bluestem Orchard Supply LLC team,\n\nThank you for your attention to this matter. Here is the position of your account as of 2026-04-30.\n\nThe total balance due is $10,875.50.\n\nThe following invoices are open:\n\n* INV-1419, issued 2026-02-12, due 2026-03-29: originally $12,600.00, of which $5,000.00 has been applied, leaving $7,600.00 open. This invoice is overdue.\n* INV-1427, issued 2026-03-30, due 2026-05-14: $3,275.50 open. This invoice is outstanding.\n\nThere are no unapplied payments or credit memos on the account.\n\nPlease reply if any of these figures do not match your records.\n\nKind regards,\n\nAccounts Receivable"
+  },
+  {
+    "item_id": "C-13",
+    "scenario_id": "S-A-02",
+    "draft": "Dear Harbor & Finch Design Co. team,\n\nThank you for reaching out about your account. Here is the current position as of 2026-03-31.\n\nThe balance due on your account is $2,150.00.\n\nThis balance reflects the following open invoices:\n- INV-2987 dated 2026-01-20, due 2026-02-19: $6,300.00 overdue.\n- INV-3014 dated 2026-02-11, due 2026-03-13: $2,150.00 overdue.\n\nWe have received your payment PMT-0265 of $6,300.00, which has not yet been applied to a specific invoice. It is reflected in the balance above.\n\nIf you have questions about any of the items above, please reply to this message and we will be glad to walk through them with you.\n\nKind regards,\nAccounts Receivable"
+  },
+  {
+    "item_id": "C-14",
+    "scenario_id": "S-A-01",
+    "draft": "Dear Harbor & Finch Design Co. team,\n\nThank you for reaching out about your account. Here is the current position as of 2026-03-31.\n\nThe balance due on your account is $14,375.50.\n\nThis balance reflects the following open invoices:\n- INV-2943 dated 2026-02-03, due 2026-03-05: $14,200.00 overdue.\n- INV-2959 dated 2026-03-02, due 2026-04-01: $1,975.50 outstanding.\n\nIf you have questions about any of the items above, please reply to this message and we will be glad to walk through them with you.\n\nKind regards,\nAccounts Receivable"
+  },
+  {
+    "item_id": "C-15",
+    "scenario_id": "S-B-03",
+    "draft": "Dear Client,\n\nThank you for your patience. Please find below the details regarding your current account balance as of 2026-04-30.\n\nThe total amount due on your account is $10,875.50.\n\nThis balance consists of the following open invoices:\n*   INV-1419: $7,600.00\n*   INV-1427: $3,275.50\n\nThere are no unapplied payments or unapplied credit memos on this account.\n\nIf you have any questions regarding these items, please do not hesitate to reach out.\n\nAccounts Receivable"
+  },
+  {
+    "item_id": "C-16",
+    "scenario_id": "S-A-01",
+    "draft": "Dear Harbor & Finch Design Co. team,\n\nThank you for reaching out about your account. Here is the current position as of 2026-03-31.\n\nThe balance due on your account is $14,375.50.\n\nThis balance reflects the following open invoices:\n- INV-2943 dated 2026-02-03, due 2026-03-05: $12,400.00 overdue.\n- INV-2959 dated 2026-03-02, due 2026-04-01: $1,975.50 outstanding.\n\nIf you have questions about any of the items above, please reply to this message and we will be glad to walk through them with you.\n\nKind regards,\nAccounts Receivable"
+  }
+]

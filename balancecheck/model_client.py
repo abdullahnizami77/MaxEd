@@ -80,6 +80,7 @@ class ModelClient:
         last_error = ""
         current_prompt = prompt
         for attempt in range(1, self.cfg.max_attempts + 1):
+            sent_prompt = current_prompt
             output_text = ""
             ok = False
             error = ""
@@ -88,7 +89,7 @@ class ModelClient:
                     output_text = self._stub_lookup(task, stub_key)
                 else:
                     output_text = self._live_call(
-                        current_prompt, system, schema, temperature, max_tokens
+                        sent_prompt, system, schema, temperature, max_tokens
                     )
                 output_text = strip_thinking(output_text)
                 if schema is not None:
@@ -118,7 +119,8 @@ class ModelClient:
                     + str(e)
                     + "\nReturn only a valid JSON object."
                 )
-            except StubKeyMissing:
+            except StubKeyMissing as e:
+                error = f"StubKeyMissing: {e}"
                 raise
             except Exception as e:  # transport, HTTP, timeout
                 error = f"{type(e).__name__}: {e}"
@@ -127,7 +129,7 @@ class ModelClient:
                 self.call_count += 1
                 trace(
                     task,
-                    current_prompt,
+                    sent_prompt,
                     output_text,
                     {
                         **meta,

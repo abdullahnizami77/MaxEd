@@ -106,18 +106,20 @@ def net_balance(ledger: Ledger) -> Cents:
 
 
 def ambiguous_allocations(ledger: Ledger) -> list[tuple[str, list[str]]]:
-    """Unapplied payments whose amount equals the open amount of two or more
-    invoices: the records genuinely do not say which invoice the money was
-    meant for, so no correct confident draft exists (the abstain trigger).
+    """Unapplied payments or credit memos whose amount equals the open amount
+    of two or more invoices: the records genuinely do not say which invoice
+    the money was meant for, so no correct confident draft exists (the
+    abstain trigger).
     """
     out: list[tuple[str, list[str]]] = []
-    for p in ledger.payments:
-        un = unapplied_amount(ledger, p.id)
+    sources: list = list(ledger.payments) + list(ledger.credit_memos)
+    for src_doc in sources:
+        un = unapplied_amount(ledger, src_doc.id)
         if un <= 0:
             continue
         matches = [i.id for i in ledger.invoices if open_amount(ledger, i.id) == un and un > 0]
         if len(matches) >= 2:
-            out.append((p.id, matches))
+            out.append((src_doc.id, matches))
     return out
 
 
@@ -128,8 +130,10 @@ def signature(ledger: Ledger) -> dict[str, bool]:
     near_dup = len(amounts) != len(set(amounts))
 
     cutoff_edge = ledger.client.as_of - timedelta(days=CUTOFF_WINDOW_DAYS)
-    cutoff = any(p.date >= cutoff_edge for p in ledger.payments) or any(
-        i.date >= cutoff_edge for i in ledger.invoices
+    cutoff = (
+        any(p.date >= cutoff_edge for p in ledger.payments)
+        or any(i.date >= cutoff_edge for i in ledger.invoices)
+        or any(c.date >= cutoff_edge for c in ledger.credit_memos)
     )
 
     sig = {

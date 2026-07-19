@@ -130,7 +130,8 @@ def run_scenario(
         )
         draft_hashes.append(hashlib.sha256(result.text.encode()).hexdigest())
         decision = decide(
-            claims, ledger, revision_index=rev, draft_hashes=draft_hashes
+            claims, ledger, revision_index=rev, draft_hashes=draft_hashes,
+            draft=result.text,
         )
         append_event(
             VerificationEvent(gen_id=gen_id, claims=claims, decision=decision, run_id=run_id),

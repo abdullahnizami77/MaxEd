@@ -1,0 +1,38 @@
+{
+  "n": 16,
+  "acceptable": {
+    "kappa": 0.746031746031746,
+    "kappa_ci": [
+      0.3469387755102041,
+      1.0
+    ],
+    "pabak": 0.75,
+    "raw_agreement": 0.875
+  },
+  "tone": {
+    "weighted_kappa": 0.2592592592592593,
+    "weighted_kappa_ci": [
+      -0.17647058823529416,
+      0.7377049180327868
+    ],
+    "raw_agreement": 0.6875
+  },
+  "clarity": {
+    "weighted_kappa": 0.15384615384615385,
+    "weighted_kappa_ci": [
+      -0.18683035714285715,
+      0.5140992587818236
+    ],
+    "raw_agreement": 0.375
+  },
+  "clean_subset": {
+    "n": 8,
+    "binary_kappa": null
+  },
+  "corrupted_subset": {
+    "n": 8,
+    "binary_kappa": null
+  },
+  "n_labeled": 16,
+  "n_judged": 16
+}

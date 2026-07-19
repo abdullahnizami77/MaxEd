@@ -75,7 +75,13 @@ class MemoryStore:
         return [MemoryEntry.model_validate(item) for item in raw]
 
     def _write(self, entries: list[MemoryEntry]) -> None:
-        """Write the canonical file: sorted keys, fixed indent, trailing newline."""
+        """Write the canonical file: sorted keys, fixed indent, trailing newline.
+
+        Entries are sorted by (ingested_offset, entry_id) so two stores
+        holding the same decisions hash identically regardless of the order
+        they were added; the pass2 versus pass2R manifest diff must never
+        show a spurious difference."""
+        entries = sorted(entries, key=lambda e: (e.ingested_offset, e.entry_id))
         payload = [e.model_dump(mode="json") for e in entries]
         blob = json.dumps(payload, indent=2, sort_keys=True) + "\n"
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -106,6 +112,11 @@ class MemoryStore:
                 "only Pool A enters memory (invariant I7)"
             )
         entries = self.entries()
+        if any(e.entry_id == entry.entry_id for e in entries):
+            # entry_id is deterministic per log offset, so a duplicate means
+            # the same decision is being re-consumed; refusing keeps ingest
+            # idempotent even if offset bookkeeping ever regresses.
+            return []
         entries.append(entry)
         key = class_key(entry.signature)
         evicted: list[str] = []
@@ -128,9 +139,20 @@ class MemoryStore:
         overlap desc, weight desc, ingested_offset desc, entry_id asc."""
         if k <= 0:
             return []
+        query_key = class_key(sig)
+        # Relevance floor: a candidate sharing no true bit with the query is
+        # noise unless it is the query's exact structure class (which is how
+        # a clean, all-false query finds its clean exemplar instead of k
+        # structurally mismatched ones).
+        candidates = [
+            e
+            for e in self.entries()
+            if signature_overlap(sig, e.signature) > 0 or class_key(e.signature) == query_key
+        ]
         ranked = sorted(
-            self.entries(),
+            candidates,
             key=lambda e: (
+                0 if class_key(e.signature) == query_key else 1,
                 -signature_overlap(sig, e.signature),
                 -e.weight,
                 -e.ingested_offset,

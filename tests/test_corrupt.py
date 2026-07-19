@@ -71,7 +71,13 @@ def good_draft(ledger: Ledger) -> str:
 # ---------------------------------------------------------------------------
 
 
-def test_swap_amount_transposes_the_first_amount() -> None:
+def test_swap_amount_targets_the_first_non_net_amount() -> None:
+    """Coverage hardening: swap_amount skips the rendered net-balance token
+    when another amount exists, so the Tier 1 sweep exercises the C-AMT
+    catch path, not only C-SUM."""
+    from balancecheck.substrate.derive import net_balance
+    from balancecheck.substrate.money import render
+
     ledger = make_ledger()
     draft = good_draft(ledger)
     corrupted = swap_amount(draft, ledger)
@@ -82,19 +88,22 @@ def test_swap_amount_transposes_the_first_amount() -> None:
     assert corrupted.expected_action == "revise"
     assert corrupted.draft != draft
 
-    original_first = _DOLLAR_RE.search(draft)
-    corrupted_first = _DOLLAR_RE.search(corrupted.draft)
-    assert original_first is not None and corrupted_first is not None
-    assert original_first.group(0) == "$2,510.00"
-    # The transposed token parses to a different positive cents value.
-    old_value = parse_dollars(original_first.group(0))
-    new_value = parse_dollars(corrupted_first.group(0))
+    net_token = render(net_balance(ledger))
+    # The net-balance token survives; some other amount was transposed.
+    assert net_token in corrupted.draft
+    original_tokens = _DOLLAR_RE.findall(draft)
+    corrupted_tokens = _DOLLAR_RE.findall(corrupted.draft)
+    changed = [
+        (a, b) for a, b in zip(original_tokens, corrupted_tokens) if a != b
+    ]
+    assert len(changed) == 1, "exactly one amount token changed"
+    old_tok, new_tok = changed[0]
+    assert old_tok != net_token
+    old_value = parse_dollars(old_tok)
+    new_value = parse_dollars(new_tok)
     assert new_value != old_value
     assert new_value > 0
     assert sorted(str(int(new_value))) == sorted(str(int(old_value)))  # a pure transposition
-    # Only the first amount changed; everything around it is intact.
-    assert corrupted.draft.startswith(draft[: original_first.start()])
-    assert corrupted.draft.endswith(draft[original_first.end() :])
 
 
 def test_swap_amount_matches_the_documented_example() -> None:

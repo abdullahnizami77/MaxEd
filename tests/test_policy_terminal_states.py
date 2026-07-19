@@ -84,7 +84,7 @@ def ambiguous_ledger() -> Ledger:
 
 
 def _claim(
-    cid: str, ctype: ClaimType, status: CheckStatus, span: str, **kw: str
+    cid: str, ctype: ClaimType, status: CheckStatus, span: str, **kw
 ) -> Claim:
     return Claim(
         claim_id=cid,
@@ -105,6 +105,8 @@ def build_claims(flags: set[str]) -> list[Claim]:
             "See INV-1012.",
             token="INV-1012",
         ),
+        # A real clean draft states the net balance; its passing C-SUM cites
+        # NET, which the missing-net policy row (row 7) keys on.
         _claim(
             "p-2",
             ClaimType.C_SUM,
@@ -113,6 +115,7 @@ def build_claims(flags: set[str]) -> list[Claim]:
             token="$1,500.00",
             expected="$1,500.00",
             actual="$1,500.00",
+            cited_records=["NET"],
         ),
     ]
     if "exist_fail" in flags:
@@ -207,6 +210,11 @@ def test_empty_findings_terminate_deterministically():
 
 
 def test_no_claims_at_all_still_terminates():
+    # A draft with no extractable claims cannot have stated the balance, so
+    # the missing-net row sends it back for revision, and to escalation at
+    # the budget: it never auto-passes (invariant I5 in spirit).
     decision = decide([], clean_ledger(), 0, [])
-    assert decision.action is GateAction.HUMAN_GATE
-    assert decision.reason == "all checks passed"
+    assert decision.action is GateAction.REVISE
+    assert decision.reason == "draft is missing required content"
+    at_budget = decide([], clean_ledger(), 2, [])
+    assert at_budget.action is GateAction.ESCALATE

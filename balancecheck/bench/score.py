@@ -23,6 +23,8 @@ through money.render; no float literal appears in this module.
 
 from __future__ import annotations
 
+import re
+
 from typing import Literal
 
 from balancecheck.contracts.models import (
@@ -75,46 +77,87 @@ def completeness(draft: str, ledger: Ledger) -> tuple[int, int]:
     Non-applicable items are excluded from the denominator: simpler ledgers
     must not be penalized.
     """
-    present = 0
-    total = 0
+    items = completeness_items(draft, ledger)
+    applicable = [i for i in items if i["applicable"]]
+    return sum(1 for i in applicable if i["present"]), len(applicable)
 
-    # 1. Net balance stated (always applicable).
-    total += 1
-    if render(derive.net_balance(ledger)) in draft:
-        present += 1
 
-    # 2. Open invoices itemized.
+def completeness_items(draft: str, ledger: Ledger) -> list[dict]:
+    """Item-level completeness detail: [{name, applicable, present, hint}].
+
+    The gate's completeness row and the directional before/after metric both
+    consume this; completeness() is its ratio view.
+    """
+    net = derive.net_balance(ledger)
+    net_present = render(net) in draft or (
+        net == 0
+        and re.search(
+            r"no\s+balance|nothing\s+(?:further\s+)?(?:is\s+)?owed|fully\s+paid|paid\s+in\s+full",
+            draft,
+            re.IGNORECASE,
+        )
+        is not None
+    )
+    items: list[dict] = [
+        {
+            "name": "net_balance_stated",
+            "applicable": True,
+            "present": net_present,
+            "hint": f"state the balance due, {render(net)}, exactly once",
+        }
+    ]
+
     open_invoices = [i for i in ledger.invoices if derive.open_amount(ledger, i.id) > 0]
-    if open_invoices:
-        total += 1
-        if all(inv.id in draft for inv in open_invoices):
-            present += 1
+    items.append(
+        {
+            "name": "open_invoices_itemized",
+            "applicable": bool(open_invoices),
+            "present": bool(open_invoices) and all(inv.id in draft for inv in open_invoices),
+            "hint": "itemize every open invoice by its ID: "
+            + ", ".join(i.id for i in open_invoices),
+        }
+    )
 
-    # 3. Unapplied cash mentioned.
     unapplied_payments = [
         p for p in ledger.payments if derive.unapplied_amount(ledger, p.id) > 0
     ]
-    if unapplied_payments:
-        total += 1
-        if all(
-            p.id in draft or render(derive.unapplied_amount(ledger, p.id)) in draft
-            for p in unapplied_payments
-        ):
-            present += 1
+    items.append(
+        {
+            "name": "unapplied_cash_mentioned",
+            "applicable": bool(unapplied_payments),
+            "present": bool(unapplied_payments)
+            and all(
+                p.id in draft or render(derive.unapplied_amount(ledger, p.id)) in draft
+                for p in unapplied_payments
+            ),
+            "hint": "mention the unapplied payment(s): "
+            + ", ".join(
+                f"{p.id} ({render(derive.unapplied_amount(ledger, p.id))})"
+                for p in unapplied_payments
+            ),
+        }
+    )
 
-    # 4. Open credit mentioned.
     open_credits = [
         c for c in ledger.credit_memos if derive.unapplied_amount(ledger, c.id) > 0
     ]
-    if open_credits:
-        total += 1
-        if all(
-            c.id in draft or render(derive.unapplied_amount(ledger, c.id)) in draft
-            for c in open_credits
-        ):
-            present += 1
-
-    return present, total
+    items.append(
+        {
+            "name": "open_credit_mentioned",
+            "applicable": bool(open_credits),
+            "present": bool(open_credits)
+            and all(
+                c.id in draft or render(derive.unapplied_amount(ledger, c.id)) in draft
+                for c in open_credits
+            ),
+            "hint": "mention the open credit memo(s): "
+            + ", ".join(
+                f"{c.id} ({render(derive.unapplied_amount(ledger, c.id))})"
+                for c in open_credits
+            ),
+        }
+    )
+    return items
 
 
 def build_score_event(

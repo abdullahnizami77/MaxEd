@@ -259,7 +259,7 @@ def _verify_draft(cfg, client, ledger, draft: str, tag: str) -> dict:
 
     claims = extract_claims(draft, ledger, claim_prefix=tag)
     check_all(claims, ledger, client, stub_key_prefix=f"errors:{tag}")
-    decision = decide(claims, ledger, revision_index=0, draft_hashes=[])
+    decision = decide(claims, ledger, revision_index=0, draft_hashes=[], draft=draft)
     append_event(
         VerificationEvent(gen_id=tag, claims=claims, decision=decision),
         cfg.log_path,
@@ -345,10 +345,18 @@ def cmd_errors(_args) -> int:
             )
 
     # Tier 2: prompted misreadings, live only (they require a real drafter
-    # reasoning badly over correct records).
+    # reasoning badly over correct records). Each naive instruction runs
+    # against the scenario whose deliberate structure it attacks; running
+    # a credit-memo misreading against a ledger with no credit memos proves
+    # nothing (a lesson from the first live run of this harness).
+    tier2_scenarios = {
+        "T2-SUM-IGNORES-UNAPPLIED": "S-A-02",   # unapplied cash
+        "T2-FULL-ORIGINAL-AMOUNTS": "S-A-03",   # partial payment
+        "T2-CREDITS-ASSUMED-APPLIED": "S-A-04", # open credit memo
+    }
     if cfg.mode == "live":
-        ledger = _load_ledger("S-A-02")  # the unapplied-cash trap
         for error_id, instruction in tier2_instructions():
+            ledger = _load_ledger(tier2_scenarios.get(error_id, "S-A-02"))
             system, user = build_draft_prompt(ledger, [], correction="")
             resp = client.complete(
                 "draft",

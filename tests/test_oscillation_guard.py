@@ -99,7 +99,10 @@ def all_pass() -> Claim:
         span="You owe $1,500.00.",
         token="$1,500.00",
         check_result=CheckResult(
-            status=CheckStatus.PASS, expected="$1,500.00", actual="$1,500.00"
+            status=CheckStatus.PASS,
+            expected="$1,500.00",
+            actual="$1,500.00",
+            cited_records=["NET"],
         ),
     )
 

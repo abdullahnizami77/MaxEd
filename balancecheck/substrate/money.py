@@ -17,7 +17,12 @@ from typing import NewType
 
 Cents = NewType("Cents", int)
 
-_AMOUNT_RE = re.compile(r"^-?\$?\s*[\d,]+(?:\.\d{1,2})?$")
+# Strict by design: at least one digit is required (",,," must not parse to
+# $0.00) and commas, when present, must be standard thousands grouping (a
+# typo like "$6,30.00" raises instead of silently becoming $630.00).
+_AMOUNT_RE = re.compile(
+    r"^-?\$?\s*(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d{1,2})?$"
+)
 
 
 def cents(n: int) -> Cents:
