@@ -1,7 +1,7 @@
 {
   "config_hash": "56a82dbd6a25d743",
-  "git_sha": "2990a525ce21",
-  "memory_state_hash": "cac708d4d81e6db9",
+  "git_sha": "c36bb9295143",
+  "memory_state_hash": "927b15ae94e638e8",
   "mode": "live",
   "model_name": "Qwen/Qwen3.6-35B-A3B",
   "pass_label": "pass2",
@@ -12,6 +12,7 @@
     "judge_rubric.md": "98c3cb8f267109d6",
     "verify_claim.md": "bec6940c3bfb03ae"
   },
-  "run_id": "pass2-7def3060",
+  "retrieval_mode": "structured",
+  "run_id": "pass2-9fcfa5bf",
   "seed": 20260718
 }

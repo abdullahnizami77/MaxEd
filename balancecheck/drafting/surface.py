@@ -46,6 +46,7 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from balancecheck.contracts.models import (
+    AmountRole,
     CheckResult,
     CheckStatus,
     Claim,
@@ -91,11 +92,11 @@ _LOOSE_PREFIX = {"invoice": "INV", "payment": "PMT", "credit memo": "CM"}
 # hide it from the ID detector.
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])(?<!No\.)(?<!no\.)\s+|\n+")
 
-_CURRENCY_DOLLAR_RE = re.compile(r"\$\s?\d+(?:,\d{3})*(?:\.\d{1,2})?")
+_CURRENCY_DOLLAR_RE = re.compile(r"-?\$\s?\d+(?:,\d{3})*(?:\.\d{1,2})?")
 _CURRENCY_SUFFIX_RE = re.compile(
-    r"\b\d+(?:,\d{3})*(?:\.\d{1,2})?\s*(?:dollars?|USD)\b", re.IGNORECASE
+    r"-?\b\d+(?:,\d{3})*(?:\.\d{1,2})?\s*(?:dollars?|USD)\b", re.IGNORECASE
 )
-_CURRENCY_PREFIX_RE = re.compile(r"\bUSD\s*\d+(?:,\d{3})*(?:\.\d{1,2})?\b", re.IGNORECASE)
+_CURRENCY_PREFIX_RE = re.compile(r"\bUSD\s*-?\d+(?:,\d{3})*(?:\.\d{1,2})?\b", re.IGNORECASE)
 _WORD_AMOUNT_RE = re.compile(
     rf"\b(?:(?:{_NUMBER_WORD_ALT})(?:[\s-]+(?:and[\s-]+)?(?:{_NUMBER_WORD_ALT}))*)\s+dollars\b",
     re.IGNORECASE,
@@ -153,11 +154,39 @@ _SUM_CONTEXT_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Amount-role detection: the phrase governing an amount names the ledger
+# figure it refers to. The checker verifies that figure, so the same number
+# is right or wrong for the right reason.
+_TOTAL_MARKER_RE = re.compile(
+    r"\b(?:your\s+account|the\s+account|account\s+balance|net\s+balance|"
+    r"total\s+balance|balance\s+due\s+on|total\s+amount\s+due|total\s+due|"
+    r"grand\s+total|in\s+total|altogether|combined|total)\b",
+    re.IGNORECASE,
+)
+_SUBTOTAL_CUE_RE = re.compile(r"\b(?:invoices?|line\s+items?|open\s+items?)\b", re.IGNORECASE)
+_BALANCE_OBJECT_RE = re.compile(
+    r"of\s+(?:the\s+|this\s+|that\s+|your\s+)?(?:balance|total|amount|account)\b",
+    re.IGNORECASE,
+)
+_ROLE_ORIGINAL_RE = re.compile(
+    r"\b(?:originally|original\s+amount|issued\s+for|was\s+(?:issued\s+)?for|"
+    r"billed\s+(?:for|at)|invoiced\s+(?:for|at)|face\s+value|full\s+amount)\b",
+    re.IGNORECASE,
+)
+_ROLE_APPLIED_RE = re.compile(
+    r"\b(?:paid|applied|remitted|of\s+which)\b", re.IGNORECASE
+)
+_ROLE_OPEN_RE = re.compile(
+    r"\b(?:open|remaining|remains|outstanding|still\s+due|now\s+due|currently\s+due|"
+    r"amount\s+due|balance\s+due|balance\s+of|left|owing|owed|due)\b",
+    re.IGNORECASE,
+)
+
 # Marker-free money shapes the red team walked past the detector: a comma
 # grouped integer ("9,999") or a two-decimal number ("2,150.00", also inside
 # parentheses) reads as money in an AR reply even with no dollar marker.
-_BARE_GROUPED_RE = re.compile(r"\b\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?\b")
-_BARE_DECIMAL_RE = re.compile(r"\b\d+\.\d{2}\b")
+_BARE_GROUPED_RE = re.compile(r"-?\b\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?\b")
+_BARE_DECIMAL_RE = re.compile(r"-?\b\d+\.\d{2}\b")
 
 _FRACTION_WORD_RE = re.compile(r"\b(?:half|halves|third|thirds|quarter|quarters)\b")
 _PERCENT_WORD_RE = re.compile(r"%|\bpercent\b")
@@ -259,6 +288,8 @@ class _Candidate:
     span: str
     token: str
     subject_id: str = ""
+    subject_ids: list[str] = field(default_factory=list)
+    role: str = ""
     check_result: CheckResult | None = None
     canonical_id: str = ""  # C-EXIST only, for the one-claim-per-ID dedup
 
@@ -305,7 +336,9 @@ def extract_claims(draft: str, ledger: Ledger, claim_prefix: str = "c") -> list[
             if cand.canonical_id in seen_exist_ids:
                 continue
             seen_exist_ids.add(cand.canonical_id)
-        key = (cand.type.value, cand.span, cand.token, cand.subject_id)
+        subject_ids = cand.subject_ids or ([cand.subject_id] if cand.subject_id else [])
+        subject_id = subject_ids[0] if len(subject_ids) == 1 else ""
+        key = (cand.type.value, cand.span, cand.token, tuple(subject_ids), cand.role)
         if key in seen_keys:
             continue
         seen_keys.add(key)
@@ -316,7 +349,9 @@ def extract_claims(draft: str, ledger: Ledger, claim_prefix: str = "c") -> list[
                 type=cand.type,
                 span=cand.span,
                 token=cand.token,
-                subject_id=cand.subject_id,
+                subject_ids=subject_ids,
+                role=cand.role,
+                subject_id=subject_id,
                 check_result=cand.check_result,
             )
         )
@@ -356,141 +391,175 @@ def _detect_in_sentence(sent_idx: int, sentence: str, ledger: Ledger) -> list[_C
                 )
             )
 
-    subject = sentence_ids[0] if len(sentence_ids) == 1 else ""
-    sum_context = bool(_SUM_CONTEXT_RE.search(sentence))
+    id_positions = sorted(id_mentions)  # (pos, canonical_id), all distinct in reading order
+    invoice_ids = [cid for _p, cid in id_positions if cid.upper().startswith("INV-")]
 
-    def amount_type_and_subject() -> tuple[ClaimType, str]:
-        if sum_context:
-            return ClaimType.C_SUM, ""
-        return ClaimType.C_AMT, subject
+    def nearest_doc(pos: int) -> str:
+        preceding = [(p, c) for p, c in id_positions if p <= pos]
+        if preceding:
+            return preceding[-1][1]
+        following = [(p, c) for p, c in id_positions if p > pos]
+        return following[0][1] if following else ""
 
-    # Amounts: resolvable shapes first, then percent/fraction escalations.
-    # The interval set prevents one text span from becoming two amount
-    # claims (e.g. "$1,200 dollars" matching both the $ and suffix forms).
+    # Collect every amount span up front so role windows never bleed across a
+    # neighbouring amount. (start, end, token, kind) with kind driving the
+    # UNVERIFIABLE marker for percent/fraction shapes.
     intervals = _IntervalSet()
-    resolvable = (
-        _CURRENCY_DOLLAR_RE,
-        _CURRENCY_PREFIX_RE,
-        _CURRENCY_SUFFIX_RE,
-        _WORD_AMOUNT_RE,
-    )
-    for pattern in resolvable:
+    amount_spans: list[tuple[int, int, str, str]] = []
+    for pattern in (_CURRENCY_DOLLAR_RE, _CURRENCY_PREFIX_RE, _CURRENCY_SUFFIX_RE, _WORD_AMOUNT_RE):
         for m in pattern.finditer(sentence):
-            if not intervals.claim(m.start(), m.end()):
-                continue
-            token = m.group(0)
-            ctype, subj = amount_type_and_subject()
-            check_result: CheckResult | None = None
+            if intervals.claim(m.start(), m.end()):
+                amount_spans.append((m.start(), m.end(), m.group(0), "resolvable"))
+    for pattern in (_PERCENT_RE, _FRACTION_RE):
+        for m in pattern.finditer(sentence):
+            if intervals.claim(m.start(), m.end()):
+                amount_spans.append((m.start(), m.end(), m.group(0), "unverifiable"))
+    for pattern in (_BARE_GROUPED_RE, _BARE_DECIMAL_RE):
+        for m in pattern.finditer(sentence):
+            if intervals.claim(m.start(), m.end()):
+                amount_spans.append((m.start(), m.end(), m.group(0), "resolvable"))
+    amount_spans.sort()
+    span_bounds = [(s, e) for s, e, _t, _k in amount_spans]
+
+    def role_distance(rx: "re.Pattern[str]", lo: int, hi: int, a0: int, a1: int) -> int | None:
+        best: int | None = None
+        for m in rx.finditer(sentence[lo:hi]):
+            ks, ke = m.start() + lo, m.end() + lo
+            d = 0 if (ks < a1 and ke > a0) else min(abs(ks - a1), abs(a0 - ke))
+            best = d if best is None else min(best, d)
+        return best
+
+    def preceding_doc(pos: int) -> str:
+        pre = [(p, c) for p, c in id_positions if p <= pos]
+        return pre[-1][1] if pre else ""
+
+    def following_doc(pos: int) -> str:
+        fol = [(p, c) for p, c in id_positions if p > pos]
+        return fol[0][1] if fol else ""
+
+    def classify_amount(start: int, end: int) -> tuple[ClaimType, list[str], str]:
+        prev_end = max((e for s, e in span_bounds if e <= start), default=0)
+        next_start = min((s for s, e in span_bounds if s >= end), default=len(sentence))
+        lo, hi = max(prev_end, start - 32), min(next_start, end + 24)
+        window = sentence[lo:hi]
+        total_near = role_distance(_TOTAL_MARKER_RE, lo, hi, start, end)
+        per_doc = {
+            AmountRole.ORIGINAL: role_distance(_ROLE_ORIGINAL_RE, lo, hi, start, end),
+            AmountRole.APPLIED: role_distance(_ROLE_APPLIED_RE, lo, hi, start, end),
+            AmountRole.OPEN: role_distance(_ROLE_OPEN_RE, lo, hi, start, end),
+        }
+        per_doc = {r: d for r, d in per_doc.items() if d is not None}
+        per_min = min(per_doc.values()) if per_doc else None
+
+        # An explicit account/net/subtotal marker names a total unless a
+        # per-invoice role word governs the amount more closely.
+        explicit_total = total_near is not None and (per_min is None or total_near <= per_min)
+        sum_context = (
+            explicit_total
+            or bool(_SUM_CONTEXT_RE.search(window))
+            or bool(_BALANCE_OBJECT_RE.search(window))
+        )
+        before = preceding_doc(start)
+
+        def role_for(doc_id: str) -> str:
+            return min(per_doc, key=per_doc.get) if per_doc else AmountRole.UNKNOWN  # type: ignore[arg-type]
+
+        # An amount refers to the invoice named just before it, unless an
+        # explicit account/subtotal marker overrides (a stated total).
+        if before and not explicit_total:
+            return ClaimType.C_AMT, [before], role_for(before)
+        if sum_context:
+            # A subtotal is a sum OVER two or more named invoices; a single
+            # invoice mentioned as context does not make the total a subtotal.
+            subs = (
+                invoice_ids
+                if (len(invoice_ids) >= 2 and _SUBTOTAL_CUE_RE.search(sentence))
+                else []
+            )
+            return ClaimType.C_SUM, subs, AmountRole.TOTAL
+        after = following_doc(start)
+        if after:
+            return ClaimType.C_AMT, [after], role_for(after)
+        return ClaimType.C_AMT, [], AmountRole.UNKNOWN
+
+    for start, end, token, kind in amount_spans:
+        ctype, subs, role = classify_amount(start, end)
+        check_result: CheckResult | None = None
+        if kind == "unverifiable":
+            check_result = CheckResult(
+                status=CheckStatus.UNVERIFIABLE,
+                actual=token,
+                detail=(
+                    f"detected {token!r} cannot be resolved to cents against the"
+                    " ledger; escalated, not dropped (I11)"
+                ),
+            )
+        else:
             try:
                 parse_amount_token(token)
             except ValueError as exc:
-                # Escalate-not-drop: a detected amount the typer cannot
-                # resolve is still emitted, pre-marked UNVERIFIABLE (I11).
                 check_result = CheckResult(
                     status=CheckStatus.UNVERIFIABLE,
                     actual=token,
                     detail=f"detected amount span could not be resolved to cents: {exc}",
                 )
-            out.append(
-                _Candidate(
-                    sent_idx=sent_idx,
-                    pos=m.start(),
-                    rank=_RANK_AMOUNT,
-                    type=ctype,
-                    span=sentence,
-                    token=token,
-                    subject_id=subj,
-                    check_result=check_result,
-                )
+        out.append(
+            _Candidate(
+                sent_idx=sent_idx,
+                pos=start,
+                rank=_RANK_AMOUNT,
+                type=ctype,
+                span=sentence,
+                token=token,
+                subject_ids=subs,
+                role=role,
+                check_result=check_result,
             )
-    for pattern, kind in ((_PERCENT_RE, "percentage"), (_FRACTION_RE, "fraction-of phrase")):
-        for m in pattern.finditer(sentence):
-            if not intervals.claim(m.start(), m.end()):
-                continue
-            token = m.group(0)
-            ctype, subj = amount_type_and_subject()
-            # A fraction phrase names its own object ("a third of the
-            # balance"): type from the object, not the surrounding sentence.
-            if kind == "fraction-of phrase" and re.search(
-                r"of\s+(?:the\s+|this\s+|that\s+|your\s+)?(?:balance|total|amount)\b",
-                token,
-                re.IGNORECASE,
-            ):
-                ctype, subj = ClaimType.C_SUM, ""
-            out.append(
-                _Candidate(
-                    sent_idx=sent_idx,
-                    pos=m.start(),
-                    rank=_RANK_AMOUNT,
-                    type=ctype,
-                    span=sentence,
-                    token=token,
-                    subject_id=subj,
-                    check_result=CheckResult(
-                        status=CheckStatus.UNVERIFIABLE,
-                        actual=token,
-                        detail=(
-                            f"detected {kind} {token!r} cannot be resolved to cents"
-                            " against the ledger; escalated, not dropped (I11)"
-                        ),
-                    ),
-                )
-            )
+        )
 
-    # Marker-free money shapes, after percent/fraction so those intervals
-    # win. Dates never collide (no commas, never exactly two decimals).
-    for pattern in (_BARE_GROUPED_RE, _BARE_DECIMAL_RE):
-        for m in pattern.finditer(sentence):
-            if not intervals.claim(m.start(), m.end()):
-                continue
-            token = m.group(0)
-            ctype, subj = amount_type_and_subject()
-            bare_check: CheckResult | None = None
-            try:
-                parse_amount_token(token)
-            except ValueError as exc:
-                bare_check = CheckResult(
-                    status=CheckStatus.UNVERIFIABLE,
-                    actual=token,
-                    detail=f"detected amount span could not be resolved to cents: {exc}",
-                )
-            out.append(
-                _Candidate(
-                    sent_idx=sent_idx,
-                    pos=m.start(),
-                    rank=_RANK_AMOUNT,
-                    type=ctype,
-                    span=sentence,
-                    token=token,
-                    subject_id=subj,
-                    check_result=bare_check,
-                )
-            )
-
-    # Dates.
+    # Dates. Collect spans first so binding can see whether a clause carries
+    # one shared date (attributed to every document it names) or several
+    # (each bound to its nearest document).
+    date_spans: list[tuple[int, int, str]] = []
     for pattern in (_ISO_DATE_RE, _MONTH_DATE_RE, _SLASH_DATE_RE):
         for m in pattern.finditer(sentence):
-            if not intervals.claim(m.start(), m.end()):
-                continue
-            out.append(
-                _Candidate(
-                    sent_idx=sent_idx,
-                    pos=m.start(),
-                    rank=_RANK_DATE,
-                    type=ClaimType.C_DATE,
-                    span=sentence,
-                    token=m.group(0),
-                    subject_id=subject,
-                )
-            )
+            if intervals.claim(m.start(), m.end()):
+                date_spans.append((m.start(), m.end(), m.group(0)))
+    date_spans.sort()
+    date_starts = [s for s, _e, _t in date_spans]
 
-    # Status words and paid-paraphrases, only in sentences that also
-    # reference a document. A sentence naming several documents asserts the
-    # status of each, so one claim is emitted per referenced document.
-    if sentence_ids:
-        # In a decomposition sentence ("of which $X has been paid, leaving
-        # $Y open") the word "paid" describes a portion, not the invoice's
-        # status; emitting it as C-STATUS would condemn a true sentence.
+    def date_subjects(pos: int) -> list[str]:
+        # Clause = text since the previous amount or date span. When a single
+        # date sits in a clause naming several documents ("both A and B were
+        # issued on DATE"), it is attributed to all of them and must hold for
+        # each; when the clause has several dates, bind each to its nearest.
+        prev_bound = [e for s, e in span_bounds if e <= pos] + [
+            e for _s, e, _t in date_spans if e <= pos
+        ]
+        boundary = max(prev_bound, default=0)
+        dates_in_clause = [d for d in date_starts if boundary <= d <= pos + 0]
+        ids_in_clause = [cid for p, cid in id_positions if boundary <= p < pos]
+        if len(dates_in_clause) <= 1 and len(ids_in_clause) >= 1:
+            return ids_in_clause
+        doc = nearest_doc(pos)
+        return [doc] if doc else []
+
+    for start, end, token in date_spans:
+        out.append(
+            _Candidate(
+                sent_idx=sent_idx,
+                pos=start,
+                rank=_RANK_DATE,
+                type=ClaimType.C_DATE,
+                span=sentence,
+                token=token,
+                subject_ids=date_subjects(start),
+            )
+        )
+
+    # Status words and paid-paraphrases: each binds to its nearest document,
+    # never to every document in the sentence (no cross-multiplication).
+    if id_positions:
         decomposition = bool(
             re.search(
                 r"\b(?:originally|original\s+amount|of\s+which|leaving|partial(?:ly)?)\b",
@@ -507,18 +576,18 @@ def _detect_in_sentence(sent_idx: int, sentence: str, ledger: Ledger) -> list[_C
             (m.start(), "paid") for m in _STATUS_PARAPHRASE_RE.finditer(sentence)
         ]
         for pos, word in status_hits:
-            for sid in sentence_ids:
-                out.append(
-                    _Candidate(
-                        sent_idx=sent_idx,
-                        pos=pos,
-                        rank=_RANK_STATUS,
-                        type=ClaimType.C_STATUS,
-                        span=sentence,
-                        token=word,
-                        subject_id=sid,
-                    )
+            doc = nearest_doc(pos)
+            out.append(
+                _Candidate(
+                    sent_idx=sent_idx,
+                    pos=pos,
+                    rank=_RANK_STATUS,
+                    type=ClaimType.C_STATUS,
+                    span=sentence,
+                    token=word,
+                    subject_ids=[doc] if doc else [],
                 )
+            )
 
     # Fuzzy assertion sentences: one C-FUZZY per sentence.
     fuzzy = _FUZZY_RE.search(sentence)

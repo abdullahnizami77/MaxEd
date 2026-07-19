@@ -12,7 +12,7 @@
   {
     "item_id": "C-03",
     "scenario_id": "S-B-04",
-    "draft": "Dear Bluestem Orchard Supply LLC team,\n\nThank you for your attention to this matter. Here is the position of your account as of 2026-04-30.\n\nThe total balance due is $19,875.50.\n\nThe following invoices are open:\n\n* INV-1465, issued 2026-03-06, due 2026-04-20: $6,850.00 open. This invoice is past due.\n* INV-1492, issued 2026-02-19, due 2026-04-05: $14,300.50 open. This invoice is past due.\n\nAn unapplied credit memo CM-0026 of $1,275.00, issued 2026-04-03, has not yet been applied to an invoice. It already reduces the balance above.\n\nPlease reply if any of these figures do not match your records.\n\nKind regards,\nAccounts Receivable"
+    "draft": "Dear Bluestem Orchard Supply LLC team,\n\nThank you for your attention to this matter. Here is the position of your account as of 2026-04-30.\n\nThe balance due on your account is $19,875.50, made up of the following open invoices:\n\n* INV-1465, issued 2026-03-06, due 2026-04-20: $6,850.00 open. This invoice is overdue.\n* INV-1492, issued 2026-02-19, due 2026-04-05: $14,300.50 open. This invoice is overdue.\n\nAn unapplied credit memo CM-0026 of $1,275.00, dated 2026-04-03, has not yet been applied to an invoice. It already reduces the balance above.\n\nPlease reply if any of these figures do not match your records.\n\nKind regards,\nAccounts Receivable"
   },
   {
     "item_id": "C-04",
@@ -57,7 +57,7 @@
   {
     "item_id": "C-12",
     "scenario_id": "S-B-03",
-    "draft": "Dear Bluestem Orchard Supply LLC team,\n\nThank you for your attention to this matter. Here is the position of your account as of 2026-04-30.\n\nThe total balance due is $10,875.50.\n\nThe following invoices are open:\n\n* INV-1419, issued 2026-02-12, due 2026-03-29: originally $12,600.00, of which $5,000.00 has been applied, leaving $7,600.00 open. This invoice is overdue.\n* INV-1427, issued 2026-03-30, due 2026-05-14: $3,275.50 open. This invoice is outstanding.\n\nThere are no unapplied payments or credit memos on the account.\n\nPlease reply if any of these figures do not match your records.\n\nKind regards,\n\nAccounts Receivable"
+    "draft": "Dear Bluestem Orchard Supply LLC team,\n\nThank you for your attention to this matter. Here is the position of your account as of 2026-04-30.\n\nThe balance due on your account is $10,875.50, made up of the following open invoices:\n\n* INV-1419, issued 2026-02-12, due 2026-03-29: originally $12,600.00, of which $5,000.00 has been paid, leaving $7,600.00 open. This invoice is overdue.\n* INV-1427, issued 2026-03-30, due 2026-05-14: $3,275.50 open. This invoice is outstanding.\n\nThere are no unapplied payments or credit memos on the account.\n\nPlease reply if any of these figures do not match your records.\n\nKind regards,\nAccounts Receivable"
   },
   {
     "item_id": "C-13",

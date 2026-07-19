@@ -85,25 +85,54 @@ def completeness(draft: str, ledger: Ledger) -> tuple[int, int]:
 def completeness_items(draft: str, ledger: Ledger) -> list[dict]:
     """Item-level completeness detail: [{name, applicable, present, hint}].
 
-    The gate's completeness row and the directional before/after metric both
-    consume this; completeness() is its ratio view.
+    Computed from VERIFIED claims, not raw text: the net balance counts as
+    stated only when a passing total claim cites the net (not when the net
+    amount happens to appear as a line item), and a document counts as
+    itemized/mentioned only when a passing claim actually references it. An
+    empty draft (an abstention) yields no applicable items, so it is not
+    scored as an incomplete draft.
     """
-    net = derive.net_balance(ledger)
-    net_present = render(net) in draft or (
-        net == 0
-        and re.search(
-            r"no\s+balance|nothing\s+(?:further\s+)?(?:is\s+)?owed|fully\s+paid|paid\s+in\s+full",
-            draft,
-            re.IGNORECASE,
+    from balancecheck.checks.checks import NET_LABEL, run_code_checks
+    from balancecheck.contracts.models import ClaimType
+    from balancecheck.drafting.surface import extract_claims
+
+    if not draft.strip():
+        return []
+
+    claims = extract_claims(draft, ledger)
+    run_code_checks(claims, ledger)
+    passing = [c for c in claims if c.check_result and c.check_result.status is CheckStatus.PASS]
+
+    def bound(c) -> set[str]:
+        return set(c.subject_ids) or ({c.subject_id} if c.subject_id else set())
+
+    def references(doc_id: str) -> bool:
+        return any(
+            (c.type is ClaimType.C_EXIST and c.token == doc_id)
+            or (c.type is ClaimType.C_AMT and doc_id in bound(c))
+            for c in passing
         )
-        is not None
+
+    net = derive.net_balance(ledger)
+    net_present = any(
+        c.type is ClaimType.C_SUM and NET_LABEL in (c.check_result.cited_records or [])
+        for c in passing
     )
+    if not net_present and net == 0:
+        net_present = (
+            re.search(
+                r"no\s+balance|nothing\s+(?:further\s+)?(?:is\s+)?owed|fully\s+paid|paid\s+in\s+full",
+                draft,
+                re.IGNORECASE,
+            )
+            is not None
+        )
     items: list[dict] = [
         {
             "name": "net_balance_stated",
             "applicable": True,
             "present": net_present,
-            "hint": f"state the balance due, {render(net)}, exactly once",
+            "hint": f"state the balance due, {render(net)}, as the account total exactly once",
         }
     ]
 
@@ -112,25 +141,19 @@ def completeness_items(draft: str, ledger: Ledger) -> list[dict]:
         {
             "name": "open_invoices_itemized",
             "applicable": bool(open_invoices),
-            "present": bool(open_invoices) and all(inv.id in draft for inv in open_invoices),
+            "present": bool(open_invoices) and all(references(inv.id) for inv in open_invoices),
             "hint": "itemize every open invoice by its ID: "
             + ", ".join(i.id for i in open_invoices),
         }
     )
 
-    unapplied_payments = [
-        p for p in ledger.payments if derive.unapplied_amount(ledger, p.id) > 0
-    ]
+    unapplied_payments = [p for p in ledger.payments if derive.unapplied_amount(ledger, p.id) > 0]
     items.append(
         {
             "name": "unapplied_cash_mentioned",
             "applicable": bool(unapplied_payments),
-            "present": bool(unapplied_payments)
-            and all(
-                p.id in draft or render(derive.unapplied_amount(ledger, p.id)) in draft
-                for p in unapplied_payments
-            ),
-            "hint": "mention the unapplied payment(s): "
+            "present": bool(unapplied_payments) and all(references(p.id) for p in unapplied_payments),
+            "hint": "mention the unapplied payment(s) by ID: "
             + ", ".join(
                 f"{p.id} ({render(derive.unapplied_amount(ledger, p.id))})"
                 for p in unapplied_payments
@@ -138,19 +161,13 @@ def completeness_items(draft: str, ledger: Ledger) -> list[dict]:
         }
     )
 
-    open_credits = [
-        c for c in ledger.credit_memos if derive.unapplied_amount(ledger, c.id) > 0
-    ]
+    open_credits = [c for c in ledger.credit_memos if derive.unapplied_amount(ledger, c.id) > 0]
     items.append(
         {
             "name": "open_credit_mentioned",
             "applicable": bool(open_credits),
-            "present": bool(open_credits)
-            and all(
-                c.id in draft or render(derive.unapplied_amount(ledger, c.id)) in draft
-                for c in open_credits
-            ),
-            "hint": "mention the open credit memo(s): "
+            "present": bool(open_credits) and all(references(c.id) for c in open_credits),
+            "hint": "mention the open credit memo(s) by ID: "
             + ", ".join(
                 f"{c.id} ({render(derive.unapplied_amount(ledger, c.id))})"
                 for c in open_credits

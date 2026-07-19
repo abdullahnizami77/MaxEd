@@ -70,12 +70,6 @@ def invoice_status(ledger: Ledger, invoice_id: str) -> InvoiceStatus:
     return InvoiceStatus.OUTSTANDING
 
 
-def days_overdue(ledger: Ledger, invoice_id: str) -> int:
-    inv = _invoice(ledger, invoice_id)
-    if invoice_status(ledger, invoice_id) != InvoiceStatus.OVERDUE:
-        return 0
-    return (ledger.client.as_of - inv.due).days
-
 
 # ---------------------------------------------------------------------------
 # Totals
@@ -149,10 +143,6 @@ def signature(ledger: Ledger) -> dict[str, bool]:
     assert set(sig) == set(STRUCTURE_LABELS)
     return sig
 
-
-def signature_bits(ledger: Ledger) -> tuple[int, ...]:
-    sig = signature(ledger)
-    return tuple(int(sig[label]) for label in STRUCTURE_LABELS)
 
 
 # ---------------------------------------------------------------------------

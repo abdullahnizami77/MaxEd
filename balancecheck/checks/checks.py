@@ -35,6 +35,7 @@ from typing import Any, Protocol
 from balancecheck.config import REPO_ROOT
 from balancecheck.contracts.models import (
     CODE_CHECKED_TYPES,
+    AmountRole,
     CheckResult,
     CheckStatus,
     Claim,
@@ -80,17 +81,6 @@ _VERDICT_TO_STATUS: dict[str, CheckStatus] = {
     "cannot_determine": CheckStatus.CANNOT_DETERMINE,
 }
 
-_STATUS_WORD_MAP: dict[str, InvoiceStatus] = {
-    "paid": InvoiceStatus.PAID,
-    "settled": InvoiceStatus.PAID,
-    "cleared": InvoiceStatus.PAID,
-    "outstanding": InvoiceStatus.OUTSTANDING,
-    "unpaid": InvoiceStatus.OUTSTANDING,
-    "open": InvoiceStatus.OUTSTANDING,
-    "overdue": InvoiceStatus.OVERDUE,
-    "past due": InvoiceStatus.OVERDUE,
-}
-
 _MONTHS: dict[str, int] = {
     "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
     "july": 7, "august": 8, "september": 9, "october": 10, "november": 11,
@@ -127,18 +117,6 @@ class CompletesStructured(Protocol):
 # ---------------------------------------------------------------------------
 
 
-_OPEN_CONTEXT_RE = re.compile(
-    r"\b(?:open|remaining|outstanding|unpaid|still\s+due|due|owe[sd]?|left)\b",
-    re.IGNORECASE,
-)
-# A decomposition sentence ("originally $X, of which $Y has been paid,
-# leaving $Z open") legitimately carries the original and applied amounts
-# alongside the open one; condemning them would reject the most transparent
-# partial-payment phrasing there is.
-_DECOMPOSITION_RE = re.compile(
-    r"\b(?:originally|original\s+amount|of\s+which|leaving|partial(?:ly)?)\b",
-    re.IGNORECASE,
-)
 _REMIT_CONTEXT_RE = re.compile(
     r"\b(?:remit|send|wire|transfer|please\s+pay|pay\s+us|kindly\s+(?:send|wire|pay))\b",
     re.IGNORECASE,
@@ -150,13 +128,16 @@ _RECEIVED_CONTEXT_RE = re.compile(
 
 
 def _no_subject_context(span: str) -> str:
-    """Classify what an unattributed amount sentence asserts."""
-    remit = bool(_REMIT_CONTEXT_RE.search(span))
-    received = bool(_RECEIVED_CONTEXT_RE.search(span))
-    if remit and not received:
-        return "remit"
-    if received and not remit:
+    """Classify what an unattributed amount sentence asserts.
+
+    A received-family word wins when both appear ("we received your transfer
+    of $600"): the factual assertion is that money came in, and checking it
+    against payments is the honest test.
+    """
+    if _RECEIVED_CONTEXT_RE.search(span):
         return "received"
+    if _REMIT_CONTEXT_RE.search(span):
+        return "remit"
     return "plain"
 
 
@@ -229,6 +210,26 @@ def _dedup(values: list[Cents]) -> list[Cents]:
     return out
 
 
+def _bound_docs(claim: Claim) -> list[str]:
+    """The documents a claim is bound to: the extractor's subject_ids, or the
+    single-subject back-compat field when subject_ids was not populated."""
+    if claim.subject_ids:
+        return list(claim.subject_ids)
+    return [claim.subject_id] if claim.subject_id else []
+
+
+# A less specific but still true status word passes; a falsely stronger one
+# fails. An overdue invoice is also unpaid/outstanding/open in ordinary usage,
+# so those weaker words are accepted; calling an outstanding invoice "overdue"
+# or an open one "paid" is not.
+_STATUS_COMPAT: dict[InvoiceStatus, set[str]] = {
+    InvoiceStatus.PAID: {"paid", "settled", "cleared"},
+    InvoiceStatus.OUTSTANDING: {"outstanding", "unpaid", "open"},
+    InvoiceStatus.OVERDUE: {"overdue", "past due", "outstanding", "unpaid", "open"},
+}
+_KNOWN_STATUS_WORDS: frozenset[str] = frozenset().union(*_STATUS_COMPAT.values())
+
+
 # ---------------------------------------------------------------------------
 # Code checkers (invariant I3: no model anywhere below)
 # ---------------------------------------------------------------------------
@@ -262,55 +263,57 @@ def check_amount(claim: Claim, ledger: Ledger) -> CheckResult:
         )
     shown = render(claimed)
 
-    if claim.subject_id:
-        kind, doc = _find_document(ledger, claim.subject_id)
+    bound = _bound_docs(claim)
+    if len(bound) == 1:
+        subject = bound[0]
+        kind, doc = _find_document(ledger, subject)
         if doc is None:
             return CheckResult(
                 status=CheckStatus.FAIL,
                 expected=render(derive.net_balance(ledger)),
                 actual=shown,
-                detail=f"amount attached to {claim.subject_id}, which is not in the ledger",
+                detail=f"amount attached to {subject}, which is not in the ledger",
             )
-        # When the sentence asserts an open/remaining/due amount, only the
-        # derived open (or unapplied) figure is acceptable: telling a client
-        # a partially-paid invoice is "open for" its full original amount is
-        # materially misleading even though the number appears in the ledger.
-        asserts_open = bool(_OPEN_CONTEXT_RE.search(claim.span))
-        decomposes = bool(_DECOMPOSITION_RE.search(claim.span))
+        # The extractor bound the amount to a role (the ledger figure the
+        # phrase names). Verify exactly that figure: an "open" amount must be
+        # the open figure, an "original" amount the invoice's face value, an
+        # "applied" amount the paid portion. A bare amount (no role word)
+        # accepts either the document amount or its open/unapplied figure.
         if kind == "invoice":
+            original = cents(doc.amount_cents)
             open_amt = derive.open_amount(ledger, doc.id)
-            if asserts_open and decomposes:
-                acceptable = _dedup(
-                    [
-                        open_amt,
-                        cents(doc.amount_cents),
-                        derive.applied_to_invoice(ledger, doc.id),
-                    ]
-                )
-            elif asserts_open:
-                acceptable = _dedup([open_amt])
-            else:
-                acceptable = _dedup([cents(doc.amount_cents), open_amt])
+            applied = derive.applied_to_invoice(ledger, doc.id)
+            by_role = {
+                AmountRole.OPEN: [open_amt],
+                AmountRole.ORIGINAL: [original],
+                AmountRole.APPLIED: [applied],
+                AmountRole.UNKNOWN: [original, open_amt],
+            }
         else:
+            original = cents(doc.amount_cents)
             unapplied = derive.unapplied_amount(ledger, doc.id)
-            acceptable = (
-                _dedup([unapplied])
-                if asserts_open
-                else _dedup([cents(doc.amount_cents), unapplied])
-            )
+            applied = derive.applied_from_source(ledger, doc.id)
+            by_role = {
+                AmountRole.OPEN: [unapplied],
+                AmountRole.ORIGINAL: [original],
+                AmountRole.APPLIED: [applied],
+                AmountRole.UNKNOWN: [original, unapplied],
+            }
+        acceptable = _dedup(by_role.get(claim.role, by_role[AmountRole.UNKNOWN]))
         if claimed in acceptable:
             return CheckResult(
                 status=CheckStatus.PASS,
                 expected=shown,
                 actual=shown,
-                cited_records=[claim.subject_id],
+                cited_records=[subject],
             )
+        role_note = f" ({claim.role})" if claim.role else ""
         return CheckResult(
             status=CheckStatus.FAIL,
             expected=" or ".join(render(v) for v in acceptable),
             actual=shown,
-            cited_records=[claim.subject_id],
-            detail=f"amount does not match {claim.subject_id}",
+            cited_records=[subject],
+            detail=f"amount does not match {subject}{role_note}",
         )
 
     # No subject: the sentence attaches this amount to nothing checkable, so
@@ -404,6 +407,27 @@ def check_sum(claim: Claim, ledger: Ledger) -> CheckResult:
             detail=f"total token could not be resolved to cents: {exc}",
         )
     net = derive.net_balance(ledger)
+    bound_invoices = [d for d in _bound_docs(claim) if _find_document(ledger, d)[0] == "invoice"]
+    if bound_invoices:
+        # A subtotal over specific named invoices: verify against THOSE
+        # invoices' open amounts, not a bare equality with the account net.
+        subtotal = cents(sum(derive.open_amount(ledger, d) for d in bound_invoices))
+        if claimed == subtotal:
+            return CheckResult(
+                status=CheckStatus.PASS,
+                expected=render(subtotal),
+                actual=render(claimed),
+                cited_records=bound_invoices,
+                detail="a true subtotal over the named invoices",
+            )
+        return CheckResult(
+            status=CheckStatus.FAIL,
+            expected=render(subtotal),
+            actual=render(claimed),
+            cited_records=bound_invoices,
+            detail="does not equal the open total of the named invoices",
+        )
+
     if claimed == net:
         return CheckResult(
             status=CheckStatus.PASS,
@@ -413,11 +437,11 @@ def check_sum(claim: Claim, ledger: Ledger) -> CheckResult:
         )
     open_total = derive.open_invoice_total(ledger)
     if claimed == open_total and open_total != net:
-        # A subtotal explicitly predicated of the invoices is a true
-        # statement ("the two open invoices total $8,450.00") and passes;
+        # A subtotal predicated of the open invoices/line items is a true
+        # statement ("your two open invoices total $8,450.00") and passes;
         # the same figure presented as the account balance is the classic
         # ignores-unapplied misreading and fails.
-        if re.search(r"\binvoices?\b", claim.span, re.IGNORECASE):
+        if re.search(r"\b(?:invoices?|line\s+items?|open\s+items?)\b", claim.span, re.IGNORECASE):
             open_ids = [
                 inv.id
                 for inv in ledger.invoices
@@ -443,8 +467,14 @@ def check_sum(claim: Claim, ledger: Ledger) -> CheckResult:
 
 
 def check_status(claim: Claim, ledger: Ledger) -> CheckResult:
-    """C-STATUS: the claimed status word matches the derived invoice status."""
-    if not claim.subject_id:
+    """C-STATUS: the claimed status word is compatible with the derived status.
+
+    A less specific but still true word passes (an overdue invoice is also
+    unpaid/outstanding); a falsely stronger word fails.
+    """
+    bound = _bound_docs(claim)
+    subject = bound[0] if len(bound) == 1 else ""
+    if not subject:
         # A status asserted of no resolvable document is not provably wrong,
         # it is unverifiable: escalate to a human rather than condemn a
         # possibly-true sentence with a definitive FAIL.
@@ -453,37 +483,36 @@ def check_status(claim: Claim, ledger: Ledger) -> CheckResult:
             actual=claim.token,
             detail="status claim with no resolvable document",
         )
-    kind, _doc = _find_document(ledger, claim.subject_id)
+    kind, _doc = _find_document(ledger, subject)
     if kind != "invoice":
         return CheckResult(
             status=CheckStatus.UNVERIFIABLE,
             actual=claim.token,
-            detail=f"status claim about {claim.subject_id}, which is not an invoice",
+            detail=f"status claim about {subject}, which is not an invoice",
         )
-    derived = derive.invoice_status(ledger, claim.subject_id)
+    derived = derive.invoice_status(ledger, subject)
     word = " ".join(claim.token.lower().split())
-    mapped = _STATUS_WORD_MAP.get(word)
-    if mapped is None:
+    if word not in _KNOWN_STATUS_WORDS:
         return CheckResult(
             status=CheckStatus.FAIL,
             expected=derived.value,
             actual=claim.token,
-            cited_records=[claim.subject_id],
+            cited_records=[subject],
             detail=f"unrecognized status word {claim.token!r}",
         )
-    if mapped is derived:
+    if word in _STATUS_COMPAT[derived]:
         return CheckResult(
             status=CheckStatus.PASS,
             expected=derived.value,
             actual=claim.token,
-            cited_records=[claim.subject_id],
+            cited_records=[subject],
         )
     return CheckResult(
         status=CheckStatus.FAIL,
         expected=derived.value,
         actual=claim.token,
-        cited_records=[claim.subject_id],
-        detail=f"the ledger derives {derived.value} for {claim.subject_id}",
+        cited_records=[subject],
+        detail=f"the ledger derives {derived.value} for {subject}",
     )
 
 
@@ -504,63 +533,52 @@ def check_date(claim: Claim, ledger: Ledger) -> CheckResult:
         )
     as_of = ledger.client.as_of
 
-    if claim.subject_id:
-        kind, doc = _find_document(ledger, claim.subject_id)
-        if doc is not None:
-            if kind == "invoice":
-                named = (("date", doc.date), ("due", doc.due))
-            else:
-                named = (("date", doc.date),)
-            if claimed in {d for _n, d in named}:
-                return CheckResult(
-                    status=CheckStatus.PASS,
-                    expected=claimed.isoformat(),
-                    actual=claim.token,
-                    cited_records=[claim.subject_id],
-                )
-            expected = " or ".join(f"{d.isoformat()} ({n})" for n, d in named)
-            if claimed > as_of:
-                detail = "date is after the statement as_of"
-            else:
-                detail = f"date matches neither the date nor the due date of {claim.subject_id}"
-            return CheckResult(
-                status=CheckStatus.FAIL,
-                expected=expected,
-                actual=claim.token,
-                cited_records=[claim.subject_id],
-                detail=detail,
-            )
-
-    # A sentence naming documents (two or more, so surface could not pick a
-    # single subject) restricts the match to THOSE documents: a real date
-    # misattributed across two named invoices must not pass by matching some
-    # unrelated ledger row.
-    span_ids = [
-        m.group(0).upper() for m in re.finditer(r"\b(?:INV|PMT|CM)-\d+\b", claim.span, re.IGNORECASE)
-    ]
-    matches: list[str] = []
-    if span_ids:
-        for doc_id in dict.fromkeys(span_ids):
+    bound = [d for d in _bound_docs(claim) if _find_document(ledger, d)[1] is not None]
+    if bound:
+        # The extractor bound this date to the document(s) the sentence
+        # attributes it to; it must be a date EVERY bound document actually
+        # carries. A date true for one named invoice but stated for two does
+        # not pass by proximity.
+        def carries(doc_id: str) -> bool:
             kind, doc = _find_document(ledger, doc_id)
-            if doc is None:
-                continue
             dates = (doc.date, doc.due) if kind == "invoice" else (doc.date,)
-            if claimed in dates:
-                matches.append(doc_id)
-        if claimed == as_of:
-            matches.append("AS_OF")
-    else:
-        for inv in ledger.invoices:
-            if claimed in (inv.date, inv.due):
-                matches.append(inv.id)
-        for pay in ledger.payments:
-            if claimed == pay.date:
-                matches.append(pay.id)
-        for cm in ledger.credit_memos:
-            if claimed == cm.date:
-                matches.append(cm.id)
-        if claimed == as_of:
-            matches.append("AS_OF")
+            return claimed in dates
+
+        missing = [d for d in bound if not carries(d)]
+        if not missing:
+            return CheckResult(
+                status=CheckStatus.PASS,
+                expected=claimed.isoformat(),
+                actual=claim.token,
+                cited_records=bound,
+            )
+        detail = (
+            "date is after the statement as_of"
+            if claimed > as_of
+            else f"date is not carried by {', '.join(missing)}"
+        )
+        return CheckResult(
+            status=CheckStatus.FAIL,
+            expected=", ".join(sorted({d.date.isoformat() for d in [_find_document(ledger, b)[1] for b in bound]})),
+            actual=claim.token,
+            cited_records=bound,
+            detail=detail,
+        )
+
+    # No single bound document: a genuinely unattributed date (e.g. the
+    # statement as_of). Accept only dates the ledger actually carries.
+    matches: list[str] = []
+    for inv in ledger.invoices:
+        if claimed in (inv.date, inv.due):
+            matches.append(inv.id)
+    for pay in ledger.payments:
+        if claimed == pay.date:
+            matches.append(pay.id)
+    for cm in ledger.credit_memos:
+        if claimed == cm.date:
+            matches.append(cm.id)
+    if claimed == as_of:
+        matches.append("AS_OF")
     if matches:
         return CheckResult(
             status=CheckStatus.PASS,
@@ -688,8 +706,24 @@ def check_fuzzy(
             cited_records=valid,
             detail="verifier cited a nonexistent record: " + ", ".join(invalid),
         )
+    status = _VERDICT_TO_STATUS[verdict]
+    # A "supported" verdict must cite at least one real record: the grounding
+    # guarantee is that support is shown, not asserted. Without a citation the
+    # claim cannot be verified and escalates instead of passing.
+    if status is CheckStatus.PASS and not valid:
+        return CheckResult(
+            status=CheckStatus.CANNOT_DETERMINE,
+            actual=claim.span,
+            detail="verifier claimed support but cited no record; support must be shown",
+        )
+    # For "unsupported" the honest statement is that the records contain no
+    # support (absence), not that a record contradicts the claim: the fuzzy
+    # claims here are conversation and approval assertions with no ledger
+    # counterpart, so absence is the finding.
+    if status is CheckStatus.UNSUPPORTED and not reason:
+        reason = "the ledger contains no record supporting this claim"
     return CheckResult(
-        status=_VERDICT_TO_STATUS[verdict],
+        status=status,
         actual=claim.span,
         cited_records=valid,
         detail=reason,

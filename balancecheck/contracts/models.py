@@ -184,6 +184,19 @@ class CheckResult(StrictModel):
     detail: str = ""
 
 
+# Amount roles: the extractor binds each amount to the ledger figure its
+# phrasing names, so the checker verifies the right quantity instead of
+# guessing from substrings. "" (UNKNOWN) means a bare amount on a document
+# with no role word; the checker then accepts either the document amount or
+# its open/unapplied figure.
+class AmountRole:
+    OPEN = "open"          # open / remaining / still due / balance on an invoice
+    ORIGINAL = "original"  # originally / issued for / the invoice's face amount
+    APPLIED = "applied"    # paid / applied portion
+    TOTAL = "total"        # the account balance or a stated subtotal (C-SUM)
+    UNKNOWN = ""
+
+
 class Claim(StrictModel):
     claim_id: str
     type: ClaimType
@@ -191,7 +204,14 @@ class Claim(StrictModel):
     token: str                    # the specific amount/ID/date/status text
     source: Literal["surface"] = "surface"
     check_result: CheckResult | None = None
-    # For C-AMT: which document the amount is attached to, when resolvable.
+    # The document(s) this claim is bound to, resolved by the extractor from
+    # the phrasing (nearest-document binding, or the named invoices for a
+    # subtotal). Checkers consume this, never re-parse the span.
+    subject_ids: list[str] = Field(default_factory=list)
+    # For amounts: which ledger figure the phrasing names (AmountRole).
+    role: str = ""
+    # Back-compat single-subject alias: the sole bound document, when there is
+    # exactly one. Kept so older call sites and tests keep working.
     subject_id: str = ""
 
 
@@ -273,6 +293,12 @@ class GenerationEvent(EventBase):
     draft: str
     revision_index: int           # 0 = first pass
     is_first_pass: bool
+    # How this draft was produced: the cheap single-call path, a prompt-only
+    # revision, or a bounded tool-using agentic recovery. Defaults keep
+    # pre-existing log lines parseable.
+    generation_mode: Literal[
+        "prompt_initial", "prompt_revision", "agentic_recovery"
+    ] = "prompt_initial"
 
 
 class VerificationEvent(EventBase):
@@ -340,6 +366,28 @@ class JudgmentEvent(EventBase):
     judge_model: str = ""
 
 
+class ToolCallEvent(EventBase):
+    """One line per attempted agent tool call, including validation failures.
+
+    The agentic recovery path may inspect the ledger through read-only tools;
+    every attempt is a typed record so the log shows exactly which evidence
+    the agent requested and what it received.
+    """
+
+    event_type: Literal["tool_call"] = "tool_call"
+    gen_id: str
+    revision_index: int
+    round_index: int              # -1 marks coverage tools executed by code,
+                                  # not chosen by the model (the forced-final
+                                  # evidence backstop)
+    call_index: int
+    tool_name: str
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    result: dict[str, Any] = Field(default_factory=dict)
+    ok: bool
+    error: str = ""
+
+
 class TraceEvent(EventBase):
     """One line per model-call attempt, drafts and judge alike (invariant I6).
 
@@ -370,6 +418,7 @@ Event = Annotated[
         IngestEvent,
         ScoreEvent,
         JudgmentEvent,
+        ToolCallEvent,
         TraceEvent,
     ],
     Field(discriminator="event_type"),

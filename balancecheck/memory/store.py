@@ -92,9 +92,6 @@ class MemoryStore:
         entries, otherwise the hash of the canonical file bytes."""
         return memory_state_hash(self.path)
 
-    def clear(self) -> None:
-        """Reset to the canonical empty store (state_hash returns "empty")."""
-        self._write([])
 
     # ------------------------------------------------------------------
     # Mutation

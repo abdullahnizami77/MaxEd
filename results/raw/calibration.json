@@ -10,28 +10,32 @@
     "raw_agreement": 0.875
   },
   "tone": {
-    "weighted_kappa": 0.2592592592592593,
+    "weighted_kappa": 0.09090909090909094,
     "weighted_kappa_ci": [
-      -0.17647058823529416,
-      0.7377049180327868
+      -0.30612244897959173,
+      0.6363636363636364
     ],
     "raw_agreement": 0.6875
   },
   "clarity": {
-    "weighted_kappa": 0.15384615384615385,
+    "weighted_kappa": 0.2666666666666667,
     "weighted_kappa_ci": [
-      -0.18683035714285715,
-      0.5140992587818236
+      -0.06474820143884896,
+      0.6491228070175439
     ],
-    "raw_agreement": 0.375
+    "raw_agreement": 0.5625
   },
   "clean_subset": {
     "n": 8,
-    "binary_kappa": null
+    "binary_kappa": 0.6,
+    "raw_agreement": 0.875,
+    "pabak": 0.75
   },
   "corrupted_subset": {
     "n": 8,
-    "binary_kappa": null
+    "binary_kappa": 0.0,
+    "raw_agreement": 0.875,
+    "pabak": 0.75
   },
   "n_labeled": 16,
   "n_judged": 16

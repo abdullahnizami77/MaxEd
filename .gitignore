@@ -7,3 +7,4 @@ runs/
 .env
 memory_store.json
 memory_meta.json
+balancecheck.egg-info/

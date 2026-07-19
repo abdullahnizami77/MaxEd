@@ -37,9 +37,12 @@ from balancecheck.spine.report import (
 # Raw JSON literals are strings, not Python structures, so no float literal
 # appears in this module even where the raw files carry kappa floats.
 CALIBRATION_JSON = (
-    '{"binary_kappa": 0.62, "binary_kappa_ci": [0.18, 0.9], "pabak": 0.5,'
-    ' "raw_agreement": 0.81, "tone_weighted_kappa": 0.44, "n": 16,'
-    ' "labeled_at": "2026-07-17T00:00:00Z", "judged_at": "2026-07-18T00:00:00Z"}'
+    '{"n": 16,'
+    ' "acceptable": {"kappa": 0.62, "kappa_ci": [0.18, 0.9], "pabak": 0.5, "raw_agreement": 0.81},'
+    ' "tone": {"weighted_kappa": 0.44, "weighted_kappa_ci": [0.1, 0.7], "raw_agreement": 0.69},'
+    ' "clarity": {"weighted_kappa": 0.27, "weighted_kappa_ci": [-0.06, 0.65], "raw_agreement": 0.56},'
+    ' "clean_subset": {"binary_kappa": 0.6, "n": 8, "raw_agreement": 0.88, "pabak": 0.75},'
+    ' "corrupted_subset": {"binary_kappa": 0.0, "n": 8, "raw_agreement": 0.88, "pabak": 0.75}}'
 )
 
 
@@ -199,10 +202,12 @@ def test_write_all_is_deterministic(populated, tmp_path: Path) -> None:
     assert set(written1) == set(written2)
     names = sorted(p.name for p in dir1.glob("*.md"))
     assert names == [
+        "agentic_recovery.md",
         "before_after.md",
         "calibration.md",
         "capability_gaps.md",
         "injected_errors.md",
+        "oracle_crosscheck.md",
         "pairwise.md",
         "trace_stats.md",
     ]
@@ -270,15 +275,13 @@ def test_capability_gaps_sorted_by_count_desc(populated) -> None:
 def test_calibration_table_renders_fields_and_caveat(populated) -> None:
     _cfg, raw = populated
     md = calibration_table(raw)
-    assert "| binary_kappa | 0.62 |" in md
-    assert "| binary_kappa_ci | [0.18, 0.9] |" in md
-    assert "| pabak | 0.5 |" in md
-    assert "| tone_weighted_kappa | 0.44 |" in md
-    assert "| raw_agreement | 0.81 |" in md
-    assert (
-        "Kappa on n=16 carries a wide CI and is a calibration signal, not a certification."
-        in md.replace("\n", " ")
-    )
+    assert "0.620" in md and "[0.180, 0.900]" in md  # acceptable kappa + CI
+    assert "0.500" in md  # pabak
+    assert "0.440" in md  # tone weighted kappa
+    assert "corrupted subset kappa 0.000" in md  # the constant-rater degeneracy, surfaced
+    assert "constant-rater degeneracy" in md
+    assert "NOT grounding" in md  # what the acceptable dimension measures
+    assert "calibration signal, not a certification" in md.replace("\n", " ")
 
 
 def test_calibration_placeholder(tmp_path: Path) -> None:
