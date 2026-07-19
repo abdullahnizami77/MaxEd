@@ -72,7 +72,9 @@ def test_overlap_dominates_weight_and_recency(store: MemoryStore) -> None:
     store.add(make_entry("zero-bits", sig("has_cutoff_risk"), weight=EDIT_WEIGHT, offset=9))
     query = sig("has_unapplied_cash", "has_partial")
     ranked = store.retrieve(query, k=3)
-    assert [e.entry_id for e in ranked] == ["two-bits", "one-bit", "zero-bits"]
+    # Relevance floor (adversarial-review hardening): the zero-overlap,
+    # different-class entry is excluded, never padded in as noise.
+    assert [e.entry_id for e in ranked] == ["two-bits", "one-bit"]
 
 
 def test_overlap_counts_only_labels_true_in_both(store: MemoryStore) -> None:
@@ -86,7 +88,9 @@ def test_overlap_counts_only_labels_true_in_both(store: MemoryStore) -> None:
     )
     store.add(make_entry("on-point", sig("has_partial"), offset=1))
     ranked = store.retrieve(sig("has_partial"), k=2)
-    assert [e.entry_id for e in ranked] == ["on-point", "busy"]
+    # "busy" shares no true bit with the query and is another class: with
+    # the relevance floor it is excluded outright.
+    assert [e.entry_id for e in ranked] == ["on-point"]
 
 
 def test_weight_breaks_overlap_ties_edit_beats_approve(store: MemoryStore) -> None:
@@ -117,10 +121,42 @@ def test_entry_id_makes_the_order_total(store: MemoryStore) -> None:
 
 
 def test_k_is_respected(store: MemoryStore) -> None:
-    for n, label in enumerate(("has_unapplied_cash", "has_partial", "has_open_credit")):
-        store.add(make_entry(f"e-{n}", sig(label), offset=n))
+    # Three entries share the has_unapplied_cash bit at different offsets;
+    # k truncates the relevant set (irrelevant entries no longer pad).
+    for n in range(3):
+        store.add(
+            make_entry(f"e-{n}", sig("has_unapplied_cash", "has_partial"), offset=n)
+        )
     assert len(store.retrieve(sig("has_unapplied_cash"), k=2)) == 2
     assert len(store.retrieve(sig("has_unapplied_cash"), k=3)) == 3
     assert store.retrieve(sig("has_unapplied_cash"), k=0) == []
     # k larger than the store returns everything, never errors.
     assert len(store.retrieve(sig("has_unapplied_cash"), k=10)) == 3
+
+
+def test_clean_query_retrieves_only_its_exact_class(store: MemoryStore) -> None:
+    """An all-false (clean) query signature retrieves the clean exemplar via
+    the exact-class rule and never structurally mismatched entries."""
+    store.add(make_entry("clean-one", sig(), offset=1))
+    store.add(make_entry("structured", sig("has_unapplied_cash"), offset=2))
+    ranked = store.retrieve(sig(), k=3)
+    assert [e.entry_id for e in ranked] == ["clean-one"]
+
+
+def test_state_hash_is_insertion_order_independent(tmp_path) -> None:
+    a = MemoryStore(tmp_path / "a.json")
+    b = MemoryStore(tmp_path / "b.json")
+    first = make_entry("m-1", sig("has_partial"), offset=1)
+    second = make_entry("m-2", sig("has_open_credit"), offset=2)
+    a.add(first)
+    a.add(second)
+    b.add(second)
+    b.add(first)
+    assert a.state_hash() == b.state_hash()
+
+
+def test_duplicate_entry_id_is_refused(store: MemoryStore) -> None:
+    entry = make_entry("dup-1", sig("has_partial"), offset=4)
+    store.add(entry)
+    store.add(make_entry("dup-1", sig("has_partial"), offset=4))
+    assert len(store.entries()) == 1

@@ -172,6 +172,12 @@ def before_after_table(events: Iterable[object]) -> str:
         for sid in {k[1] for k in latest}
         if ("pass1", sid) in latest and ("pass2", sid) in latest
     )
+    unpaired = sorted(
+        (sid, pl)
+        for (pl, sid) in latest
+        if pl in ("pass1", "pass2")
+        and not (("pass1", sid) in latest and ("pass2", sid) in latest)
+    )
     lines.append("")
     lines.append("## Paired per scenario: pass1 vs pass2")
     lines.append("")
@@ -219,6 +225,10 @@ def before_after_table(events: Iterable[object]) -> str:
         )
     else:
         lines.append("(no scenario scored in both pass1 and pass2 yet)")
+    if unpaired:
+        lines.append("")
+        for sid, pl in unpaired:
+            lines.append(f"unpaired: {sid} ({pl} only)")
     lines.append("")
     lines.append(
         f"n = {len(paired)} paired scenarios. "
@@ -480,6 +490,11 @@ def write_all(cfg: Config, results_dir: Path, raw_dir: Path) -> dict[str, Path]:
     written: dict[str, Path] = {}
     for name in REPORT_NAMES:
         content = outputs[name]
+        if "BC:BEGIN" in content or "BC:END" in content:
+            # A results file containing a marker string would corrupt README
+            # injection silently (duplicated trailing content on every
+            # re-inject); refusing here keeps I10's machinery trustworthy.
+            raise ValueError(f"generated {name}.md contains a BC injection marker")
         if not content.endswith("\n"):
             content += "\n"
         path = results_dir / f"{name}.md"
@@ -517,4 +532,8 @@ def readme_inject(readme_path: Path, results_dir: Path) -> str:
             "mismatched BC:BEGIN/BC:END markers in README: "
             f"{len(begins)} BEGIN marker(s), {replaced} complete block(s)"
         )
+    # The injected text must itself re-inject cleanly (idempotence); a
+    # mismatch after injection means some content smuggled a marker in.
+    if len(_BEGIN_RE.findall(new_text)) != len(_BLOCK_RE.findall(new_text)):
+        raise ValueError("README injection produced unbalanced markers")
     return new_text

@@ -130,7 +130,9 @@ def test_oracle_replay_math_is_correct_by_hand() -> None:
     assert 76000 in truth         # INV-1002 amount and open amount
     assert 240000 in truth        # INV-1001 original amount
     assert 50000 in truth         # payment amount
-    assert 0 in truth             # fully applied payment's unapplied amount
+    # Zero is deliberately absent when money is owed: a fabricated "$0.00"
+    # claim must not verify (adversarial-review hardening).
+    assert 0 not in truth
     assert ids == {"INV-1001", "INV-1002", "PMT-2001"}
 
 

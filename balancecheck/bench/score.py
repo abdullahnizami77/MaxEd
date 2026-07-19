@@ -23,6 +23,8 @@ through money.render; no float literal appears in this module.
 
 from __future__ import annotations
 
+import re
+
 from typing import Literal
 
 from balancecheck.contracts.models import (
@@ -78,9 +80,18 @@ def completeness(draft: str, ledger: Ledger) -> tuple[int, int]:
     present = 0
     total = 0
 
-    # 1. Net balance stated (always applicable).
+    # 1. Net balance stated (always applicable). On a fully paid ledger a
+    # correct reply may phrase the zero in words; the documented phrase set
+    # counts as stating it.
     total += 1
-    if render(derive.net_balance(ledger)) in draft:
+    net = derive.net_balance(ledger)
+    if render(net) in draft:
+        present += 1
+    elif net == 0 and re.search(
+        r"no\s+balance|nothing\s+(?:further\s+)?(?:is\s+)?owed|fully\s+paid|paid\s+in\s+full",
+        draft,
+        re.IGNORECASE,
+    ):
         present += 1
 
     # 2. Open invoices itemized.

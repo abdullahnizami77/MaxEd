@@ -132,6 +132,11 @@ def truth_sets(fixture: dict) -> tuple[set[int], set[str]]:
     truth.update(
         {open_invoice_total, unapplied_cash_total, unapplied_credit_total, net_balance}
     )
+    # Zero-cent replayed values (a fully applied source, a paid-off invoice)
+    # would let a fabricated "$0.00" claim verify on any ledger. Zero is only
+    # a true figure when the net balance itself is zero.
+    if net_balance != 0:
+        truth.discard(0)
     return truth, ids
 
 

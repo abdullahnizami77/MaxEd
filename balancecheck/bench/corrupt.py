@@ -29,6 +29,7 @@ from dataclasses import dataclass
 
 from balancecheck.contracts.models import Ledger
 from balancecheck.substrate import derive
+from balancecheck.substrate.derive import net_balance
 from balancecheck.substrate.money import cents, parse_dollars, render
 
 _DOLLAR_RE = re.compile(r"-?\$[\d,]+(?:\.\d{1,2})?")
@@ -90,7 +91,18 @@ def swap_amount(draft: str, ledger: Ledger) -> CorruptedDraft | None:
     draft carries no dollar amount, or the first amount has no transposable
     digit pair.
     """
-    match = _DOLLAR_RE.search(draft)
+    # Prefer an amount that is NOT the rendered net balance: golden drafts
+    # lead with the net, and always corrupting it would exercise only the
+    # C-SUM catch path (adversarial-review coverage finding). Fall back to
+    # the first amount when nothing else exists.
+    net_token = render(net_balance(ledger))
+    match = None
+    for m in _DOLLAR_RE.finditer(draft):
+        if m.group(0) != net_token:
+            match = m
+            break
+    if match is None:
+        match = _DOLLAR_RE.search(draft)
     if match is None:
         return None
     token = match.group(0)

@@ -122,6 +122,11 @@ def ingest(
     refused_pool_b = 0
     skipped_decline = 0
 
+    # Two-phase for crash safety: build every entry first (ledger loads are
+    # where failures happen), and only when the whole batch is constructed
+    # touch the store and the offset. A crash mid-batch therefore adds
+    # nothing and advances nothing, so the rerun cannot double-add.
+    pending: list[MemoryEntry] = []
     for offset, event in _events_with_offsets(log_path, consumed_from):
         if not isinstance(event, HumanDecisionEvent):
             continue
@@ -134,18 +139,26 @@ def ingest(
             skipped_decline += 1
             continue
         ledger = _load_ledger(event.scenario_id, fixtures_dir)
-        entry = MemoryEntry(
-            entry_id=f"mem-{offset:06d}",
-            source_gen_id=event.gen_id,
-            scenario_id=event.scenario_id,
-            pool="A",
-            signature=derive.signature(ledger),
-            weight=_WEIGHT_BY_ACTION[event.action],
-            final_text=event.final_text,
-            human_action=event.action,
-            note=event.reason,
-            ingested_offset=offset,
+        if ledger.pool != "A":
+            # Second I7 layer: the fixture file is the authority, not the
+            # event's self-reported pool string.
+            refused_pool_b += 1
+            continue
+        pending.append(
+            MemoryEntry(
+                entry_id=f"mem-{offset:06d}",
+                source_gen_id=event.gen_id,
+                scenario_id=event.scenario_id,
+                pool="A",
+                signature=derive.signature(ledger),
+                weight=_WEIGHT_BY_ACTION[event.action],
+                final_text=event.final_text,
+                human_action=event.action,
+                note=event.reason,
+                ingested_offset=offset,
+            )
         )
+    for entry in pending:
         evicted += len(store.add(entry))
         added += 1
 

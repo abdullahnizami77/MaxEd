@@ -16,10 +16,21 @@ def append_event(event, log_path: Path) -> int:
     """Append one event; returns the zero-based line offset it landed on."""
     log_path.parent.mkdir(parents=True, exist_ok=True)
     offset = 0
+    torn_tail = False
     if log_path.exists():
         with log_path.open("rb") as f:
             offset = sum(1 for _ in f)
+            # A crash mid-write can truncate the final line without its
+            # newline; appending straight onto the stump would glue the new
+            # event into one merged garbage line, destroying both. Sealing
+            # the stump with a newline confines the damage to the torn line.
+            f.seek(0, 2)
+            if f.tell() > 0:
+                f.seek(-1, 2)
+                torn_tail = f.read(1) != b"\n"
     with log_path.open("a", encoding="utf-8") as f:
+        if torn_tail:
+            f.write("\n")
         f.write(dump_event(event) + "\n")
     return offset
 
