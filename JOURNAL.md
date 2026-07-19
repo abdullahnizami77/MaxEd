@@ -1,6 +1,6 @@
 # Decision journal
 
-Fourteen bullets across the build, the live runs, and two rounds of review.
+Fifteen bullets across the build, the live runs, two rounds of review, and the agentic-recovery iteration.
 
 - Sliced the brief to one artifact (the balance-due client reply) and built the substrate as 12 small scenario snapshots (two clients, six deliberate ledger structures, held-out Pool B) rather than one big ledger, because the learning loop needs a held-out pool and the error taxonomy needs each structure isolated.
 - Probed the endpoint before writing any code: the served model leaks its reasoning into the content by default (fixed with enable_thinking false) and honors JSON-schema constrained decoding. That single probe retired the biggest small-model risk (malformed JSON) before the judge existed.
@@ -16,3 +16,4 @@ Fourteen bullets across the build, the live runs, and two rounds of review.
 - Root cause behind nine of the checker findings: the checkers re-derived which document and which figure an amount meant from brittle substring heuristics. Rebuilt the extractor to bind each claim to a document and a role (open, original, applied, total); the checkers now verify exactly the named figure, closing the false accepts and false rejects together.
 - The sharpest single finding: "revise and re-check" had never run end to end, because the model's first drafts always passed, so the revision path was dead code that looked alive. It now has a programmable-stub test that drives a wrong draft through a real correction to convergence.
 - AI tools, net: the multi-agent reviews found real bugs I had missed (including ones I introduced while fixing earlier ones), but only execution-based reviewers that ran the code were trustworthy; a review that reasons without running misses exactly the input shapes the golden drafts never take.
+- Added the bounded agentic recovery path (read-only ledger tools, strict budgets, the same gate re-verifying everything) and benched it against the prompt revision on 13 identical correctable failures: both recovered 13 of 13, the agent gathering its own evidence in 11 of 13, at about twice the LLM cost. The honest read: with a correction as precise as this gate writes, a small model does not need tool-driven agency to recover; the agentic path is where recovery would live when corrections are vaguer or evidence is not already in the prompt, and the forced-final rate is the number to watch as models scale.
