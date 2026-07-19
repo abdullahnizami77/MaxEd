@@ -36,9 +36,9 @@ from balancecheck.contracts.models import (
     GateDecision,
     Ledger,
 )
-from balancecheck.checks.checks import NET_LABEL
+from balancecheck.checks.checks import NET_LABEL, parse_claim_amount
 from balancecheck.substrate import derive
-from balancecheck.substrate.money import render
+from balancecheck.substrate.money import cents, render
 
 REVISION_BUDGET = 2        # C-AMT/C-SUM/C-STATUS/C-DATE corrections: revise below this
 FUZZY_REVISION_BUDGET = 1  # an unsupported fuzzy claim is revised exactly once
@@ -55,7 +55,8 @@ REASON_CANNOT_DETERMINE = "fuzzy claim cannot be determined from the records"
 REASON_AMBIGUOUS = "ambiguous allocation"
 REASON_ALL_PASS = "all checks passed"
 REASON_LOOP = "revision loop"
-REASON_MISSING_NET = "draft never states the net balance due"
+REASON_INCOMPLETE = "draft is missing required content"
+REASON_ITEMIZATION = "itemized amounts contradict the computed totals"
 
 WOULD_RESOLVE_CANNOT_DETERMINE = "a record or human confirmation of the claimed arrangement"
 
@@ -140,7 +141,7 @@ def _status_of(claim: Claim) -> CheckStatus | None:
 
 def _match_matrix(
     claims: list[Claim], ledger: Ledger, revision_index: int
-) -> GateDecision:
+, draft: str = "") -> GateDecision:
     exist_fails = [
         c
         for c in claims
@@ -289,41 +290,64 @@ def _match_matrix(
     if ambiguity is not None:
         return ambiguity
 
-    # Row 7 (adversarial-review hardening): every individual claim can be
-    # true while the draft misleads by omission. A balance-due reply that
-    # never states the net balance is incomplete by construction, so the
-    # gate requires one passing claim citing the computed net. Claim-level
-    # checks cannot see a missing claim; this row can.
-    net = derive.net_balance(ledger)
-    if net != 0 and not any(
-        c.check_result is not None
-        and c.check_result.status is CheckStatus.PASS
-        and NET_LABEL in c.check_result.cited_records
-        for c in claims
-    ):
-        finding = Finding(
-            kind="missing_net_statement",
-            detail="no sentence states the computed net balance due",
-            correction=(
-                f"The draft never states the balance due. The ledger computes "
-                f"{render(net)}; state it exactly once as the balance due."
-            ),
-        )
+    # Rows 7 and 8 (adversarial-review hardening): every individual claim
+    # can be true while the draft misleads as a whole. Claim-level checks
+    # cannot see a missing claim or an inconsistent presentation; these
+    # rows can, and both were added after live drafts demonstrated exactly
+    # these escapes.
+
+    # Row 7: itemization consistency. When the draft itemizes every open
+    # invoice and the ledger has no unapplied sources, the itemized amounts
+    # must sum to the open-invoice total; listing full original amounts as
+    # what is owed alongside a smaller correct net is a wrong presentation
+    # made of individually true numbers.
+    inconsistency = _itemization_inconsistency(claims, ledger)
+    if inconsistency is not None:
         if revision_index < REVISION_BUDGET:
             return GateDecision(
                 action=GateAction.REVISE,
-                reason=REASON_MISSING_NET,
-                findings=[finding],
-                payload=finding.correction,
+                reason=REASON_ITEMIZATION,
+                findings=[inconsistency],
+                payload=inconsistency.correction,
             )
         return GateDecision(
             action=GateAction.ESCALATE,
-            reason=REASON_MISSING_NET,
-            findings=[finding],
-            payload=finding.detail,
+            reason=REASON_ITEMIZATION,
+            findings=[inconsistency],
+            payload=inconsistency.detail,
         )
 
-    # Row 8: everything passed; a human still approves (invariant I5).
+    # Row 8: completeness. A balance-due reply must state the net balance,
+    # itemize the open invoices, and mention unapplied cash and open
+    # credits when the ledger carries them. With the draft text in hand the
+    # full applicability-gated checklist gates; without it (bare claim-set
+    # callers) the net-statement citation is the fallback signal.
+    missing = _missing_completeness(claims, ledger, draft)
+    if missing:
+        findings = [
+            Finding(
+                kind=f"missing_{name}",
+                detail=f"required content absent: {name}",
+                correction=hint,
+            )
+            for name, hint in missing
+        ]
+        correction = " ".join(f.correction for f in findings)
+        if revision_index < REVISION_BUDGET:
+            return GateDecision(
+                action=GateAction.REVISE,
+                reason=REASON_INCOMPLETE,
+                findings=findings,
+                payload=correction,
+            )
+        return GateDecision(
+            action=GateAction.ESCALATE,
+            reason=REASON_INCOMPLETE,
+            findings=findings,
+            payload="; ".join(f.detail for f in findings),
+        )
+
+    # Row 9: everything passed; a human still approves (invariant I5).
     return GateDecision(
         action=GateAction.HUMAN_GATE, reason=REASON_ALL_PASS, findings=[]
     )
@@ -333,11 +357,86 @@ def _repeats_earlier_hash(draft_hashes: list[str]) -> bool:
     return bool(draft_hashes) and draft_hashes[-1] in draft_hashes[:-1]
 
 
+def _itemization_inconsistency(claims: list[Claim], ledger: Ledger) -> Finding | None:
+    open_invoices = {
+        i.id: derive.open_amount(ledger, i.id)
+        for i in ledger.invoices
+        if derive.open_amount(ledger, i.id) > 0
+    }
+    if len(open_invoices) < 2:
+        return None
+    # Only when nothing is unapplied: then the open-invoice total IS the
+    # net, and an itemization summing to anything else contradicts it.
+    if derive.unapplied_cash_total(ledger) != 0 or derive.unapplied_credit_total(ledger) != 0:
+        return None
+    itemized: dict[str, int] = {}
+    for c in claims:
+        if (
+            c.type is ClaimType.C_AMT
+            and c.subject_id in open_invoices
+            and c.check_result is not None
+            and c.check_result.status is CheckStatus.PASS
+        ):
+            try:
+                itemized[c.subject_id] = int(parse_claim_amount(c.token))
+            except ValueError:
+                continue
+    if set(itemized) != set(open_invoices):
+        return None  # not a full itemization; nothing to cross-check
+    itemized_sum = sum(itemized.values())
+    open_total = int(derive.open_invoice_total(ledger))
+    if itemized_sum == open_total:
+        return None
+    return Finding(
+        kind="itemization_inconsistent",
+        detail=(
+            f"itemized invoice amounts sum to {render(cents(itemized_sum))} but the "
+            f"open-invoice total is {render(cents(open_total))}"
+        ),
+        correction=(
+            "The itemized amounts contradict the computed balance: list each open "
+            "invoice at its OPEN amount ("
+            + ", ".join(f"{k} {render(v)}" for k, v in sorted(open_invoices.items()))
+            + ")."
+        ),
+    )
+
+
+def _missing_completeness(
+    claims: list[Claim], ledger: Ledger, draft: str
+) -> list[tuple[str, str]]:
+    if draft:
+        from balancecheck.bench.score import completeness_items
+
+        return [
+            (item["name"], item["hint"])
+            for item in completeness_items(draft, ledger)
+            if item["applicable"] and not item["present"]
+        ]
+    # Fallback for bare claim-set callers: the net-statement citation.
+    net = derive.net_balance(ledger)
+    if net != 0 and not any(
+        c.check_result is not None
+        and c.check_result.status is CheckStatus.PASS
+        and NET_LABEL in c.check_result.cited_records
+        for c in claims
+    ):
+        return [
+            (
+                "net_balance_stated",
+                f"The draft never states the balance due. The ledger computes "
+                f"{render(net)}; state it exactly once as the balance due.",
+            )
+        ]
+    return []
+
+
 def decide(
     claims: list[Claim],
     ledger: Ledger,
     revision_index: int,
     draft_hashes: list[str],
+    draft: str = "",
 ) -> GateDecision:
     """One gate decision for one verified draft; first matching row wins.
 
@@ -345,7 +444,7 @@ def decide(
     a current hash that already appeared converts any REVISE into
     ESCALATE "revision loop" (the oscillation guard).
     """
-    decision = _match_matrix(claims, ledger, revision_index)
+    decision = _match_matrix(claims, ledger, revision_index, draft)
     if decision.action is GateAction.REVISE and _repeats_earlier_hash(draft_hashes):
         return GateDecision(
             action=GateAction.ESCALATE,

@@ -259,7 +259,7 @@ def _verify_draft(cfg, client, ledger, draft: str, tag: str) -> dict:
 
     claims = extract_claims(draft, ledger, claim_prefix=tag)
     check_all(claims, ledger, client, stub_key_prefix=f"errors:{tag}")
-    decision = decide(claims, ledger, revision_index=0, draft_hashes=[])
+    decision = decide(claims, ledger, revision_index=0, draft_hashes=[], draft=draft)
     append_event(
         VerificationEvent(gen_id=tag, claims=claims, decision=decision),
         cfg.log_path,

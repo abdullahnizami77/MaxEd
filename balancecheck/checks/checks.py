@@ -152,6 +152,11 @@ def _no_subject_context(span: str) -> str:
     return "plain"
 
 
+def parse_claim_amount(token: str) -> Cents:
+    """Public parse for cross-claim consumers (gate policy's aggregate rows)."""
+    return _parse_amount(token)
+
+
 def _parse_amount(token: str) -> Cents:
     """Resolve an amount token to integer cents through one seam.
 

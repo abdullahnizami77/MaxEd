@@ -215,6 +215,6 @@ def test_no_claims_at_all_still_terminates():
     # the budget: it never auto-passes (invariant I5 in spirit).
     decision = decide([], clean_ledger(), 0, [])
     assert decision.action is GateAction.REVISE
-    assert decision.reason == "draft never states the net balance due"
+    assert decision.reason == "draft is missing required content"
     at_budget = decide([], clean_ledger(), 2, [])
     assert at_budget.action is GateAction.ESCALATE

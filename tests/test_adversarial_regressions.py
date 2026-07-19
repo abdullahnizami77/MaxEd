@@ -94,7 +94,7 @@ def test_true_sentence_is_not_condemned(ledger, sentence):
     run_code_checks(claims, ledger)
     decision = decide(claims, ledger, revision_index=0, draft_hashes=[])
     claim_level_failures = [
-        f for f in decision.findings if f.kind != "missing_net_statement"
+        f for f in decision.findings if not f.kind.startswith("missing_")
     ]
     assert not claim_level_failures, (
         f"true statement condemned: {claim_level_failures} for {sentence!r}"
