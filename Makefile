@@ -6,7 +6,7 @@
 
 PY := ./.venv/bin/python
 
-.PHONY: demo fixtures stubs verify test pass1 poolA ingest pass2 pass2r errors bench report readme clean-log
+.PHONY: fixtures stubs demo test verify poolA review pass1 ingest pass2 pass2r errors bench-select bench-judge bench-agree bench-pairwise report readme
 
 fixtures:
 	$(PY) -m balancecheck.substrate.foundry

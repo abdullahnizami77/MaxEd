@@ -11,7 +11,6 @@ sealed into results/raw for unsealing only after labels.csv is committed.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import random
 import sys
@@ -159,9 +158,13 @@ def cmd_run_pool(args) -> int:
         store = MemoryStore(MEMORY_FILE)
         mem_hash = store.state_hash()
         memory = RandomRetrievalStore(store, cfg.seed) if args.with_random_memory else store
+    retrieval_mode = (
+        "random" if args.with_random_memory else "structured" if args.with_memory else "none"
+    )
     run_id = new_run_id(args.pass_label)
     write_manifest(
-        run_id, args.pass_label, cfg, pool=args.pool, mem_hash=mem_hash
+        run_id, args.pass_label, cfg, pool=args.pool, mem_hash=mem_hash,
+        extra={"retrieval_mode": retrieval_mode},
     )
     _emit_run_start(cfg, run_id, args.pass_label, args.pool, mem_hash)
     client = _client(cfg, run_id)
@@ -204,18 +207,47 @@ def cmd_review(args) -> int:
         print(f"{len(pending)} generation(s) awaiting a human decision")
         return 0
     if args.apply:
+        from balancecheck.checks.checks import run_code_checks
+        from balancecheck.drafting.surface import extract_claims
+
         decisions = json.loads(Path(args.apply).read_text())
         applied = 0
         for row in decisions:
             gen_id = row["gen_id"]
-            if gen_id not in pending and gen_id not in gens:
-                print(f"skipping unknown gen_id {gen_id}")
-                continue
+            override = bool(row.get("override"))
+            # Only a draft that actually reached the human gate can be
+            # decided on; anything else (a revision intermediate, an
+            # escalation) requires an explicit, logged override.
+            if gen_id not in pending:
+                if gen_id in gens and override:
+                    print(f"OVERRIDE: deciding on non-gated generation {gen_id}")
+                else:
+                    print(f"skipping {gen_id}: not awaiting a human decision (use override to force)")
+                    continue
             gen = gens[gen_id]
             action = HumanAction(row["action"])
             final_text = row.get("final_text", "")
             if action == HumanAction.APPROVE and not final_text:
                 final_text = gen.draft
+            # Re-verify the text that will be stored: a human edit can
+            # introduce a wrong figure, and this text becomes a memory
+            # exemplar. A materially failing edit is refused unless overridden.
+            if action != HumanAction.DECLINE and final_text:
+                claims = extract_claims(final_text, _load_ledger(gen.scenario_id))
+                run_code_checks(claims, _load_ledger(gen.scenario_id))
+                fails = [
+                    c
+                    for c in claims
+                    if c.check_result and c.check_result.status.value == "fail"
+                ]
+                if fails and not override:
+                    print(
+                        f"refusing {gen_id}: the final text fails re-verification "
+                        f"({fails[0].check_result.detail}); fix it or set override"
+                    )
+                    continue
+                if fails:
+                    print(f"OVERRIDE: storing {gen_id} despite {len(fails)} failed claim(s)")
             append_event(
                 HumanDecisionEvent(
                     gen_id=gen_id,

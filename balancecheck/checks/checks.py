@@ -81,17 +81,6 @@ _VERDICT_TO_STATUS: dict[str, CheckStatus] = {
     "cannot_determine": CheckStatus.CANNOT_DETERMINE,
 }
 
-_STATUS_WORD_MAP: dict[str, InvoiceStatus] = {
-    "paid": InvoiceStatus.PAID,
-    "settled": InvoiceStatus.PAID,
-    "cleared": InvoiceStatus.PAID,
-    "outstanding": InvoiceStatus.OUTSTANDING,
-    "unpaid": InvoiceStatus.OUTSTANDING,
-    "open": InvoiceStatus.OUTSTANDING,
-    "overdue": InvoiceStatus.OVERDUE,
-    "past due": InvoiceStatus.OVERDUE,
-}
-
 _MONTHS: dict[str, int] = {
     "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
     "july": 7, "august": 8, "september": 9, "october": 10, "november": 11,
@@ -128,18 +117,6 @@ class CompletesStructured(Protocol):
 # ---------------------------------------------------------------------------
 
 
-_OPEN_CONTEXT_RE = re.compile(
-    r"\b(?:open|remaining|outstanding|unpaid|still\s+due|due|owe[sd]?|left)\b",
-    re.IGNORECASE,
-)
-# A decomposition sentence ("originally $X, of which $Y has been paid,
-# leaving $Z open") legitimately carries the original and applied amounts
-# alongside the open one; condemning them would reject the most transparent
-# partial-payment phrasing there is.
-_DECOMPOSITION_RE = re.compile(
-    r"\b(?:originally|original\s+amount|of\s+which|leaving|partial(?:ly)?)\b",
-    re.IGNORECASE,
-)
 _REMIT_CONTEXT_RE = re.compile(
     r"\b(?:remit|send|wire|transfer|please\s+pay|pay\s+us|kindly\s+(?:send|wire|pay))\b",
     re.IGNORECASE,
@@ -729,8 +706,24 @@ def check_fuzzy(
             cited_records=valid,
             detail="verifier cited a nonexistent record: " + ", ".join(invalid),
         )
+    status = _VERDICT_TO_STATUS[verdict]
+    # A "supported" verdict must cite at least one real record: the grounding
+    # guarantee is that support is shown, not asserted. Without a citation the
+    # claim cannot be verified and escalates instead of passing.
+    if status is CheckStatus.PASS and not valid:
+        return CheckResult(
+            status=CheckStatus.CANNOT_DETERMINE,
+            actual=claim.span,
+            detail="verifier claimed support but cited no record; support must be shown",
+        )
+    # For "unsupported" the honest statement is that the records contain no
+    # support (absence), not that a record contradicts the claim: the fuzzy
+    # claims here are conversation and approval assertions with no ledger
+    # counterpart, so absence is the finding.
+    if status is CheckStatus.UNSUPPORTED and not reason:
+        reason = "the ledger contains no record supporting this claim"
     return CheckResult(
-        status=_VERDICT_TO_STATUS[verdict],
+        status=status,
         actual=claim.span,
         cited_records=valid,
         detail=reason,
