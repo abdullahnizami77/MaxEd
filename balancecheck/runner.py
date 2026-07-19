@@ -24,7 +24,7 @@ from balancecheck.contracts.models import (
 from balancecheck.drafting.drafter import generate_draft
 from balancecheck.drafting.surface import extract_claims
 from balancecheck.gate.gaps import derive_gap
-from balancecheck.gate.policy import build_correction, decide, precheck_abstain
+from balancecheck.gate.policy import decide, precheck_abstain
 from balancecheck.model_client import ModelClient
 from balancecheck.spine.events import append_event
 from balancecheck.substrate import derive
@@ -154,9 +154,13 @@ def run_scenario(
                 cfg.log_path,
             )
         if decision.action == GateAction.REVISE:
-            correction = build_correction(
-                [c for c in claims if c.check_result and c.check_result.status.value != "pass"]
-            )
+            # The gate's decision is the single source of the revision
+            # instruction. Every REVISE row (claim-level corrections and the
+            # aggregate itemization/completeness rows alike) builds a
+            # prompt-ready payload; rebuilding it from failed claims here
+            # would send an empty correction for whole-draft failures, which
+            # have no failed individual claim.
+            correction = decision.payload
             continue
 
         gap = derive_gap(decision, ledger, gen_id)
