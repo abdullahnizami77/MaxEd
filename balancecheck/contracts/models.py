@@ -184,6 +184,19 @@ class CheckResult(StrictModel):
     detail: str = ""
 
 
+# Amount roles: the extractor binds each amount to the ledger figure its
+# phrasing names, so the checker verifies the right quantity instead of
+# guessing from substrings. "" (UNKNOWN) means a bare amount on a document
+# with no role word; the checker then accepts either the document amount or
+# its open/unapplied figure.
+class AmountRole:
+    OPEN = "open"          # open / remaining / still due / balance on an invoice
+    ORIGINAL = "original"  # originally / issued for / the invoice's face amount
+    APPLIED = "applied"    # paid / applied portion
+    TOTAL = "total"        # the account balance or a stated subtotal (C-SUM)
+    UNKNOWN = ""
+
+
 class Claim(StrictModel):
     claim_id: str
     type: ClaimType
@@ -191,7 +204,14 @@ class Claim(StrictModel):
     token: str                    # the specific amount/ID/date/status text
     source: Literal["surface"] = "surface"
     check_result: CheckResult | None = None
-    # For C-AMT: which document the amount is attached to, when resolvable.
+    # The document(s) this claim is bound to, resolved by the extractor from
+    # the phrasing (nearest-document binding, or the named invoices for a
+    # subtotal). Checkers consume this, never re-parse the span.
+    subject_ids: list[str] = Field(default_factory=list)
+    # For amounts: which ledger figure the phrasing names (AmountRole).
+    role: str = ""
+    # Back-compat single-subject alias: the sole bound document, when there is
+    # exactly one. Kept so older call sites and tests keep working.
     subject_id: str = ""
 
 
