@@ -163,7 +163,14 @@ def before_after_table(events: Iterable[object]) -> str:
         )
     lines.extend(
         _table(
-            ["pass", "scenarios", "grounding", "completeness", "mean revisions", "terminal actions"],
+            [
+                "pass",
+                "scenarios",
+                "grounding",
+                "completeness",
+                "revisions (total/scenarios)",
+                "terminal actions",
+            ],
             rows,
         )
     )

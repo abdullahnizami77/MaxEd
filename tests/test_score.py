@@ -14,7 +14,12 @@ from __future__ import annotations
 
 from datetime import date
 
-from balancecheck.bench.score import build_score_event, completeness, grounding
+from balancecheck.bench.score import (
+    build_score_event,
+    completeness,
+    completeness_items,
+    grounding,
+)
 from balancecheck.contracts.models import (
     Application,
     CheckResult,
@@ -140,24 +145,43 @@ def test_completeness_all_items_present() -> None:
     assert completeness(draft, ledger) == (4, 4)
 
 
-def test_completeness_rendered_amounts_stand_in_for_ids() -> None:
+def test_completeness_is_semantic_not_token_presence() -> None:
     ledger = rich_ledger()
     net = render(derive.net_balance(ledger))
-    # The unapplied payment appears only as $500.00 and the open credit only
-    # as $150.00; both count as mentioned.
-    draft = (
-        f"Your balance is {net}, covering INV-1001 and INV-1002. A payment of"
+    # A payment and credit named only by amount (no ID) do NOT count as
+    # mentioned: completeness is computed from verified claims that reference
+    # the document, not from an amount appearing anywhere in the text.
+    amounts_only = (
+        f"The balance due is {net}, covering INV-1001 and INV-1002. A payment of"
         " $500.00 remains unapplied and a credit of $150.00 is open."
     )
-    assert completeness(draft, ledger) == (4, 4)
+    assert completeness(amounts_only, ledger) == (2, 4)  # net + invoices only
+    # With the documents named by ID, all four items are present.
+    with_ids = (
+        f"The balance due is {net}. Open invoices INV-1001 ($2,400.00) and"
+        " INV-1002 ($760.00). Unapplied payment PMT-2001 of $500.00 and open"
+        " credit memo CM-3001 of $150.00."
+    )
+    assert completeness(with_ids, ledger) == (4, 4)
+
+
+def test_completeness_net_only_as_line_amount_does_not_count() -> None:
+    ledger = rich_ledger()
+    net = render(derive.net_balance(ledger))  # $2,510.00
+    # The net figure appears only as INV-1001's stated amount, never as the
+    # account total: net_balance_stated must be False (the G3 false positive).
+    assert net not in (render(derive.open_amount(ledger, i.id)) for i in ledger.invoices)
+    draft = f"INV-1001 is open for {net}."
+    items = {i["name"]: i["present"] for i in completeness_items(draft, ledger)}
+    assert items["net_balance_stated"] is False
 
 
 def test_completeness_missing_items_detected() -> None:
     ledger = rich_ledger()
     net = render(derive.net_balance(ledger))
-    # Net stated, but itemization incomplete (INV-1002 missing), no mention
-    # of the unapplied payment or the open credit by ID or amount.
-    draft = f"Your balance is {net} on invoice INV-1001."
+    # Net stated, but itemization incomplete (INV-1002 missing) and no mention
+    # of the unapplied payment or the open credit.
+    draft = f"The balance due is {net}. Invoice INV-1001 remains open."
     assert completeness(draft, ledger) == (1, 4)
 
 
@@ -182,7 +206,12 @@ def test_completeness_na_items_excluded_from_denominator() -> None:
 def test_completeness_itemization_requires_every_open_invoice() -> None:
     ledger = rich_ledger()
     net = render(derive.net_balance(ledger))
-    one_missing = f"Balance {net}; see INV-1001, payment PMT-2001, credit CM-3001."
+    # INV-1002 (open) is not itemized, so open_invoices_itemized is absent
+    # even though the payment and credit are named; net + payment + credit = 3.
+    one_missing = (
+        f"The balance due is {net}. See invoice INV-1001, payment PMT-2001,"
+        " and credit memo CM-3001."
+    )
     present, total = completeness(one_missing, ledger)
     assert (present, total) == (3, 4)
 

@@ -429,6 +429,14 @@ def _detect_in_sentence(sent_idx: int, sentence: str, ledger: Ledger) -> list[_C
             best = d if best is None else min(best, d)
         return best
 
+    def preceding_doc(pos: int) -> str:
+        pre = [(p, c) for p, c in id_positions if p <= pos]
+        return pre[-1][1] if pre else ""
+
+    def following_doc(pos: int) -> str:
+        fol = [(p, c) for p, c in id_positions if p > pos]
+        return fol[0][1] if fol else ""
+
     def classify_amount(start: int, end: int) -> tuple[ClaimType, list[str], str]:
         prev_end = max((e for s, e in span_bounds if e <= start), default=0)
         next_start = min((s for s, e in span_bounds if s >= end), default=len(sentence))
@@ -441,23 +449,37 @@ def _detect_in_sentence(sent_idx: int, sentence: str, ledger: Ledger) -> list[_C
             AmountRole.OPEN: role_distance(_ROLE_OPEN_RE, lo, hi, start, end),
         }
         per_doc = {r: d for r, d in per_doc.items() if d is not None}
-        doc = nearest_doc(start)
+        per_min = min(per_doc.values()) if per_doc else None
 
-        # An account total or subtotal: an explicit total/subtotal marker
-        # governs the amount, or (with no bound document) a balance/owe/total
-        # phrase does. A per-invoice role word ("remaining", "issued for")
-        # alone does NOT make a docless amount a total.
-        is_total = (
-            total_near is not None and (not per_doc or total_near <= min(per_doc.values()))
-        ) or (not doc and bool(_SUM_CONTEXT_RE.search(window))) or bool(
-            _BALANCE_OBJECT_RE.search(window)
+        # An explicit account/net/subtotal marker names a total unless a
+        # per-invoice role word governs the amount more closely.
+        explicit_total = total_near is not None and (per_min is None or total_near <= per_min)
+        sum_context = (
+            explicit_total
+            or bool(_SUM_CONTEXT_RE.search(window))
+            or bool(_BALANCE_OBJECT_RE.search(window))
         )
-        if is_total:
-            subs = invoice_ids if (invoice_ids and _SUBTOTAL_CUE_RE.search(sentence)) else []
+        before = preceding_doc(start)
+
+        def role_for(doc_id: str) -> str:
+            return min(per_doc, key=per_doc.get) if per_doc else AmountRole.UNKNOWN  # type: ignore[arg-type]
+
+        # An amount refers to the invoice named just before it, unless an
+        # explicit account/subtotal marker overrides (a stated total).
+        if before and not explicit_total:
+            return ClaimType.C_AMT, [before], role_for(before)
+        if sum_context:
+            # A subtotal is a sum OVER two or more named invoices; a single
+            # invoice mentioned as context does not make the total a subtotal.
+            subs = (
+                invoice_ids
+                if (len(invoice_ids) >= 2 and _SUBTOTAL_CUE_RE.search(sentence))
+                else []
+            )
             return ClaimType.C_SUM, subs, AmountRole.TOTAL
-        if doc:
-            role = min(per_doc, key=per_doc.get) if per_doc else AmountRole.UNKNOWN  # type: ignore[arg-type]
-            return ClaimType.C_AMT, [doc], role
+        after = following_doc(start)
+        if after:
+            return ClaimType.C_AMT, [after], role_for(after)
         return ClaimType.C_AMT, [], AmountRole.UNKNOWN
 
     for start, end, token, kind in amount_spans:

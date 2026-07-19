@@ -28,6 +28,7 @@ What this module guarantees:
 from __future__ import annotations
 
 from balancecheck.contracts.models import (
+    AmountRole,
     CheckStatus,
     Claim,
     ClaimType,
@@ -369,18 +370,35 @@ def _itemization_inconsistency(claims: list[Claim], ledger: Ledger) -> Finding |
     # net, and an itemization summing to anything else contradicts it.
     if derive.unapplied_cash_total(ledger) != 0 or derive.unapplied_credit_total(ledger) != 0:
         return None
-    itemized: dict[str, int] = {}
+    # The figure the draft presents as each invoice's owed amount: a role=open
+    # amount when the draft labels it open, otherwise a bare (role=unknown)
+    # amount stated against the invoice. Amounts the draft explicitly labels
+    # original or applied are not the owed figure and are ignored, so a
+    # transparent decomposition ("originally X, of which Y paid, leaving Z
+    # open") is not misread as an inconsistent itemization.
+    open_figs: dict[str, int] = {}
+    unknown_figs: dict[str, int] = {}
     for c in claims:
-        if (
-            c.type is ClaimType.C_AMT
-            and c.subject_id in open_invoices
-            and c.check_result is not None
-            and c.check_result.status is CheckStatus.PASS
-        ):
-            try:
-                itemized[c.subject_id] = int(parse_claim_amount(c.token))
-            except ValueError:
-                continue
+        if c.type is not ClaimType.C_AMT or c.check_result is None:
+            continue
+        if c.check_result.status is not CheckStatus.PASS:
+            continue
+        bound = set(c.subject_ids) or ({c.subject_id} if c.subject_id else set())
+        if len(bound) != 1:
+            continue
+        sid = next(iter(bound))
+        if sid not in open_invoices:
+            continue
+        try:
+            value = int(parse_claim_amount(c.token))
+        except ValueError:
+            continue
+        if c.role == AmountRole.OPEN:
+            open_figs[sid] = value
+        elif c.role == AmountRole.UNKNOWN:
+            unknown_figs.setdefault(sid, value)
+    itemized = {sid: open_figs.get(sid, unknown_figs.get(sid)) for sid in open_invoices}
+    itemized = {sid: v for sid, v in itemized.items() if v is not None}
     if set(itemized) != set(open_invoices):
         return None  # not a full itemization; nothing to cross-check
     itemized_sum = sum(itemized.values())
