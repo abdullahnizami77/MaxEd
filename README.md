@@ -272,16 +272,22 @@ successful terminal state.
 
 Recovery rate: prompt 13/13 (100%), agentic 13/13 (100%).
 Agentic cost: 28 agent LLM calls and 37 tool calls across 13 recoveries (2.1 calls and 2.8 tools per recovery on average).
-Forced-final rate: 2/13 (15%). A forced final means the model did not gather sufficient evidence unaided and the orchestrator executed the missing required tools deterministically before demanding the final draft: it is the honest measure of how much of the agency is the model's own.
+Forced-final rate: 2/13 (15%). A forced final means the model used both tool rounds without returning an acceptable final draft, so the guaranteed third call was made to extract it. It does NOT by itself mean the evidence was missing (see the next line).
+Coverage-forced rate: 0/13 (0%). This counts recoveries where the model failed to gather a REQUIRED tool result and the orchestrator executed it deterministically; it is the honest measure of how much of the agency is the model's own. Of the forced finals, 2 had gathered all required evidence themselves (coverage-forced zero) and simply used the full round budget before finalizing.
 Cost framing: the prompt arm spends 1 LLM call per recovery; the agentic arm spent 2.1 on average plus tools. The fast path (a clean first draft) uses one call and zero tools in both modes.
 <!-- BC:END agentic_recovery -->
 
-The forced-final rate is the honest small-model measure: it counts recoveries
-where the model did not gather the required evidence unaided and the
-orchestrator had to execute the missing tools deterministically before the
-final draft. On a small model the recovery path partly degrades toward
-deterministic evidence-gathering plus one drafting call, which is stated here
-rather than hidden.
+Two distinct numbers are reported and must not be conflated. The forced-final
+rate counts recoveries where the model used both tool rounds without emitting
+an acceptable final draft, so the guaranteed third call extracted it; that
+alone does not mean evidence was missing. The coverage-forced rate is the
+honest small-model measure: recoveries where the model failed to gather a
+required tool result and the orchestrator executed it deterministically. When
+the model gathers its own evidence but simply uses its full round budget, the
+forced final has zero coverage-forced, and the numbers below say so. The total
+tool ceiling binds this deterministic backstop too, so a recovery never
+exceeds its configured tool budget; if required evidence still cannot be
+gathered, the recovery escalates rather than accepting an ungrounded draft.
 
 ## How it works
 
