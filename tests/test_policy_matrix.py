@@ -105,6 +105,7 @@ def claim_with(
     expected: str = "",
     actual: str = "",
     detail: str = "",
+    cited_records: list[str] | None = None,
 ) -> Claim:
     return Claim(
         claim_id=cid,
@@ -113,12 +114,18 @@ def claim_with(
         token=token,
         subject_id=subject,
         check_result=CheckResult(
-            status=status, expected=expected, actual=actual, detail=detail
+            status=status,
+            expected=expected,
+            actual=actual,
+            detail=detail,
+            cited_records=cited_records or []
         ),
     )
 
 
 def passing_claim(cid: str = "p-001") -> Claim:
+    # A clean draft's passing total cites NET, which the missing-net policy
+    # row (adversarial-review hardening) keys on.
     return claim_with(
         cid,
         ClaimType.C_SUM,
@@ -127,6 +134,7 @@ def passing_claim(cid: str = "p-001") -> Claim:
         "$2,250.00",
         expected="$2,250.00",
         actual="$2,250.00",
+        cited_records=["NET"],
     )
 
 

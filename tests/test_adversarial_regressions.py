@@ -86,8 +86,22 @@ def test_wrong_sentence_is_caught(ledger, sentence):
 
 @pytest.mark.parametrize("sentence", TRUE_SENTENCES)
 def test_true_sentence_is_not_condemned(ledger, sentence):
-    action = _decide(ledger, sentence)
-    assert action == "human_gate", f"true statement flagged as {action}: {sentence!r}"
+    """A true sentence must never be condemned at claim level. When it is a
+    fragment that omits the net balance, the completeness row may revise it
+    (missing_net_statement is not a claim-level condemnation); anything else
+    must reach the human gate."""
+    claims = extract_claims(sentence, ledger)
+    run_code_checks(claims, ledger)
+    decision = decide(claims, ledger, revision_index=0, draft_hashes=[])
+    claim_level_failures = [
+        f for f in decision.findings if f.kind != "missing_net_statement"
+    ]
+    assert not claim_level_failures, (
+        f"true statement condemned: {claim_level_failures} for {sentence!r}"
+    )
+    assert decision.action.value in ("human_gate", "revise"), (
+        f"true statement got {decision.action.value}: {sentence!r}"
+    )
 
 
 def test_golden_drafts_survive_the_hardening():

@@ -36,7 +36,9 @@ from balancecheck.contracts.models import (
     GateDecision,
     Ledger,
 )
+from balancecheck.checks.checks import NET_LABEL
 from balancecheck.substrate import derive
+from balancecheck.substrate.money import render
 
 REVISION_BUDGET = 2        # C-AMT/C-SUM/C-STATUS/C-DATE corrections: revise below this
 FUZZY_REVISION_BUDGET = 1  # an unsupported fuzzy claim is revised exactly once
@@ -53,6 +55,7 @@ REASON_CANNOT_DETERMINE = "fuzzy claim cannot be determined from the records"
 REASON_AMBIGUOUS = "ambiguous allocation"
 REASON_ALL_PASS = "all checks passed"
 REASON_LOOP = "revision loop"
+REASON_MISSING_NET = "draft never states the net balance due"
 
 WOULD_RESOLVE_CANNOT_DETERMINE = "a record or human confirmation of the claimed arrangement"
 
@@ -286,7 +289,41 @@ def _match_matrix(
     if ambiguity is not None:
         return ambiguity
 
-    # Row 7: everything passed; a human still approves (invariant I5).
+    # Row 7 (adversarial-review hardening): every individual claim can be
+    # true while the draft misleads by omission. A balance-due reply that
+    # never states the net balance is incomplete by construction, so the
+    # gate requires one passing claim citing the computed net. Claim-level
+    # checks cannot see a missing claim; this row can.
+    net = derive.net_balance(ledger)
+    if net != 0 and not any(
+        c.check_result is not None
+        and c.check_result.status is CheckStatus.PASS
+        and NET_LABEL in c.check_result.cited_records
+        for c in claims
+    ):
+        finding = Finding(
+            kind="missing_net_statement",
+            detail="no sentence states the computed net balance due",
+            correction=(
+                f"The draft never states the balance due. The ledger computes "
+                f"{render(net)}; state it exactly once as the balance due."
+            ),
+        )
+        if revision_index < REVISION_BUDGET:
+            return GateDecision(
+                action=GateAction.REVISE,
+                reason=REASON_MISSING_NET,
+                findings=[finding],
+                payload=finding.correction,
+            )
+        return GateDecision(
+            action=GateAction.ESCALATE,
+            reason=REASON_MISSING_NET,
+            findings=[finding],
+            payload=finding.detail,
+        )
+
+    # Row 8: everything passed; a human still approves (invariant I5).
     return GateDecision(
         action=GateAction.HUMAN_GATE, reason=REASON_ALL_PASS, findings=[]
     )
