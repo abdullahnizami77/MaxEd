@@ -1,0 +1,50 @@
+{
+  "C-01": {
+    "source": "T2-CREDITS-ASSUMED-APPLIED"
+  },
+  "C-02": {
+    "source": "E-T1-02-S-A-02"
+  },
+  "C-03": {
+    "source": "live_pass"
+  },
+  "C-04": {
+    "source": "E-T4-S-A-03"
+  },
+  "C-05": {
+    "source": "live_pass"
+  },
+  "C-06": {
+    "source": "E-CLEAN-S-A-03"
+  },
+  "C-07": {
+    "source": "E-T1-03-S-A-02"
+  },
+  "C-08": {
+    "source": "E-CLEAN-S-A-04"
+  },
+  "C-09": {
+    "source": "E-T1-03-S-A-01"
+  },
+  "C-10": {
+    "source": "T2-SUM-IGNORES-UNAPPLIED"
+  },
+  "C-11": {
+    "source": "E-T1-02-S-A-01"
+  },
+  "C-12": {
+    "source": "live_pass"
+  },
+  "C-13": {
+    "source": "E-CLEAN-S-A-02"
+  },
+  "C-14": {
+    "source": "E-T1-01-S-A-01"
+  },
+  "C-15": {
+    "source": "live_pass"
+  },
+  "C-16": {
+    "source": "E-CLEAN-S-A-01"
+  }
+}

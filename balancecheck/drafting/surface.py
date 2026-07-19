@@ -488,7 +488,21 @@ def _detect_in_sentence(sent_idx: int, sentence: str, ledger: Ledger) -> list[_C
     # reference a document. A sentence naming several documents asserts the
     # status of each, so one claim is emitted per referenced document.
     if sentence_ids:
-        status_hits = [(m.start(), m.group(0)) for m in _STATUS_RE.finditer(sentence)]
+        # In a decomposition sentence ("of which $X has been paid, leaving
+        # $Y open") the word "paid" describes a portion, not the invoice's
+        # status; emitting it as C-STATUS would condemn a true sentence.
+        decomposition = bool(
+            re.search(
+                r"\b(?:originally|original\s+amount|of\s+which|leaving|partial(?:ly)?)\b",
+                sentence,
+                re.IGNORECASE,
+            )
+        )
+        status_hits = [
+            (m.start(), m.group(0))
+            for m in _STATUS_RE.finditer(sentence)
+            if not (decomposition and m.group(0).lower() in ("paid", "unpaid"))
+        ]
         status_hits += [
             (m.start(), "paid") for m in _STATUS_PARAPHRASE_RE.finditer(sentence)
         ]

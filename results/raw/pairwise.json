@@ -1,0 +1,77 @@
+[
+  {
+    "scenario_id": "S-B-01",
+    "verdict": "b",
+    "flipped": false,
+    "orderings": {
+      "ab": {
+        "verdict": "b",
+        "parse_ok": true
+      },
+      "ba": {
+        "verdict": "b",
+        "parse_ok": true
+      }
+    }
+  },
+  {
+    "scenario_id": "S-B-02",
+    "verdict": "b",
+    "flipped": false,
+    "orderings": {
+      "ab": {
+        "verdict": "b",
+        "parse_ok": true
+      },
+      "ba": {
+        "verdict": "b",
+        "parse_ok": true
+      }
+    }
+  },
+  {
+    "scenario_id": "S-B-03",
+    "verdict": "b",
+    "flipped": false,
+    "orderings": {
+      "ab": {
+        "verdict": "b",
+        "parse_ok": true
+      },
+      "ba": {
+        "verdict": "b",
+        "parse_ok": true
+      }
+    }
+  },
+  {
+    "scenario_id": "S-B-04",
+    "verdict": "b",
+    "flipped": false,
+    "orderings": {
+      "ab": {
+        "verdict": "b",
+        "parse_ok": true
+      },
+      "ba": {
+        "verdict": "b",
+        "parse_ok": true
+      }
+    }
+  },
+  {
+    "scenario_id": "S-B-05",
+    "verdict": "b",
+    "flipped": false,
+    "orderings": {
+      "ab": {
+        "verdict": "b",
+        "parse_ok": true
+      },
+      "ba": {
+        "verdict": "b",
+        "parse_ok": true
+      }
+    }
+  }
+]

@@ -1,0 +1,178 @@
+{
+  "C-01": {
+    "scores": {
+      "tone": 3,
+      "tone_span": "Thank you for your time.",
+      "clarity": 2,
+      "clarity_span": "Please note that credit memos are treated as applied and are not listed separately.",
+      "acceptable": false,
+      "acceptable_rationale": "The draft states that credit memos are 'treated as applied' which contradicts the records showing an unapplied credit of $850.00, and fails to explain how the net balance of $14,100.00 is derived from the open invoices totaling $14,950.00, leaving the client confused about the discrepancy."
+    },
+    "parse_ok": true
+  },
+  "C-02": {
+    "scores": {
+      "tone": 3,
+      "tone_span": "If you have questions about any of the items above, please reply to this message and we will be glad to walk through them with you.",
+      "clarity": 2,
+      "clarity_span": "This balance reflects the following open invoices: - INV-9000 dated 2026-01-20, due 2026-02-19: $6,300.00 overdue.",
+      "acceptable": false,
+      "acceptable_rationale": "The draft incorrectly lists INV-9000 instead of INV-2987, which creates confusion and factual inaccuracy regarding the client's outstanding balance."
+    },
+    "parse_ok": true
+  },
+  "C-03": {
+    "scores": {
+      "tone": 4,
+      "tone_span": "Thank you for your attention to this matter.",
+      "clarity": 4,
+      "clarity_span": "It already reduces the balance above.",
+      "acceptable": true,
+      "acceptable_rationale": "The draft clearly lists the open invoices, explains the unapplied credit, and states the net balance due, providing a complete and courteous explanation."
+    },
+    "parse_ok": true
+  },
+  "C-04": {
+    "scores": {
+      "tone": 4,
+      "tone_span": "we will be glad to walk through them with you.",
+      "clarity": 4,
+      "clarity_span": "This balance reflects the following open invoices:",
+      "acceptable": true,
+      "acceptable_rationale": "The draft clearly lists the open invoices and amounts, explains the total balance, and maintains a professional and helpful tone."
+    },
+    "parse_ok": true
+  },
+  "C-05": {
+    "scores": {
+      "tone": 4,
+      "tone_span": "Thank you for your patience.",
+      "clarity": 2,
+      "clarity_span": "Unapplied payment: PMT-0539, $0.00",
+      "acceptable": false,
+      "acceptable_rationale": "The draft incorrectly lists PMT-0539 as an unapplied payment with a $0.00 balance, which is confusing and factually misleading given the records show it was fully applied to INV-1508, potentially causing the client to question why a payment is listed as unapplied."
+    },
+    "parse_ok": true
+  },
+  "C-06": {
+    "scores": {
+      "tone": 4,
+      "tone_span": "we will be glad to walk through them with you.",
+      "clarity": 4,
+      "clarity_span": "This balance reflects the following open invoices:",
+      "acceptable": true,
+      "acceptable_rationale": "The draft clearly lists the specific open invoices and amounts that comprise the total balance due, providing a complete and courteous explanation."
+    },
+    "parse_ok": true
+  },
+  "C-07": {
+    "scores": {
+      "tone": 4,
+      "tone_span": "we will be glad to walk through them with you.",
+      "clarity": 2,
+      "clarity_span": "It is reflected in the balance above.",
+      "acceptable": false,
+      "acceptable_rationale": "The draft states the balance is $2,160.00 but lists invoices totaling $8,450.00 and mentions an unapplied payment without explaining the arithmetic discrepancy or the net balance of $2,150.00, leaving the client confused about the actual amount owed."
+    },
+    "parse_ok": true
+  },
+  "C-08": {
+    "scores": {
+      "tone": 4,
+      "tone_span": "we will be glad to walk through them with you.",
+      "clarity": 4,
+      "clarity_span": "This balance reflects the following open invoices: ... An open credit memo CM-0025 of $850.00 is also reflected in the balance above.",
+      "acceptable": true,
+      "acceptable_rationale": "The draft clearly lists the open invoices and explicitly mentions the unapplied credit memo, providing a complete and courteous explanation of the net balance due."
+    },
+    "parse_ok": true
+  },
+  "C-09": {
+    "scores": {
+      "tone": 4,
+      "tone_span": "we will be glad to walk through them with you.",
+      "clarity": 4,
+      "clarity_span": "This balance reflects the following open invoices:",
+      "acceptable": false,
+      "acceptable_rationale": "The draft states the balance is $14,385.50, which contradicts the records showing a net balance due of $14,375.50, creating a confusing and unprofessional discrepancy for the client."
+    },
+    "parse_ok": true
+  },
+  "C-10": {
+    "scores": {
+      "tone": 4,
+      "tone_span": "Thank you for your patience.",
+      "clarity": 2,
+      "clarity_span": "The total balance due is $8,450.00.",
+      "acceptable": false,
+      "acceptable_rationale": "The draft states the total balance due is $8,450.00, which contradicts the account records showing a net balance due of $2,150.00 after accounting for unapplied cash, thereby leaving the client confused about the actual amount owed."
+    },
+    "parse_ok": true
+  },
+  "C-11": {
+    "scores": {
+      "tone": 4,
+      "tone_span": "we will be glad to walk through them with you.",
+      "clarity": 2,
+      "clarity_span": "INV-9000 dated 2026-02-03",
+      "acceptable": false,
+      "acceptable_rationale": "The draft cites invoice number INV-9000 for the $12,400.00 charge, but the records show this amount belongs to INV-2943, creating a factual error that would confuse the client."
+    },
+    "parse_ok": true
+  },
+  "C-12": {
+    "scores": {
+      "tone": 4,
+      "tone_span": "Thank you for your attention to this matter.",
+      "clarity": 4,
+      "clarity_span": "The following invoices are open:",
+      "acceptable": true,
+      "acceptable_rationale": "The draft clearly lists the open invoices, explains the balance composition, and invites the client to dispute any discrepancies, making it complete and courteous."
+    },
+    "parse_ok": true
+  },
+  "C-13": {
+    "scores": {
+      "tone": 4,
+      "tone_span": "we will be glad to walk through them with you.",
+      "clarity": 2,
+      "clarity_span": "It is reflected in the balance above.",
+      "acceptable": false,
+      "acceptable_rationale": "The draft is factually incorrect and confusing because it states the unapplied payment is 'reflected in the balance above,' implying the client owes $2,150 despite having $6,300 in unapplied cash that should offset the open invoices, leaving a net balance of $0 or requiring application."
+    },
+    "parse_ok": true
+  },
+  "C-14": {
+    "scores": {
+      "tone": 3,
+      "tone_span": "we will be glad to walk through them with you.",
+      "clarity": 2,
+      "clarity_span": "INV-2943 dated 2026-02-03, due 2026-03-05: $14,200.00 overdue.",
+      "acceptable": false,
+      "acceptable_rationale": "The draft contains a significant factual error regarding the amount of INV-2943 ($14,200.00 instead of $12,400.00), which undermines the completeness and accuracy of the explanation despite the polite tone."
+    },
+    "parse_ok": true
+  },
+  "C-15": {
+    "scores": {
+      "tone": 4,
+      "tone_span": "If you have any questions regarding these items, please do not hesitate to reach out.",
+      "clarity": 4,
+      "clarity_span": "This balance consists of the following open invoices: * INV-1419: $7,600.00 * INV-1427: $3,275.50",
+      "acceptable": true,
+      "acceptable_rationale": "The draft clearly lists the specific open invoices that comprise the total balance due, ensuring the client understands exactly what they owe."
+    },
+    "parse_ok": true
+  },
+  "C-16": {
+    "scores": {
+      "tone": 4,
+      "tone_span": "we will be glad to walk through them with you.",
+      "clarity": 4,
+      "clarity_span": "This balance reflects the following open invoices:",
+      "acceptable": true,
+      "acceptable_rationale": "The draft clearly lists the specific open invoices and amounts that comprise the total balance due, providing a complete and courteous explanation."
+    },
+    "parse_ok": true
+  }
+}

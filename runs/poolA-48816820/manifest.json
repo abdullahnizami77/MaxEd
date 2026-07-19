@@ -1,0 +1,17 @@
+{
+  "config_hash": "56a82dbd6a25d743",
+  "git_sha": "2990a525ce21",
+  "memory_state_hash": "empty",
+  "mode": "live",
+  "model_name": "Qwen/Qwen3.6-35B-A3B",
+  "pass_label": "poolA",
+  "pool": "A",
+  "prompt_hashes": {
+    "draft_reply.md": "a5be5179611657ab",
+    "judge_pairwise.md": "53519c74edd1dcb7",
+    "judge_rubric.md": "98c3cb8f267109d6",
+    "verify_claim.md": "bec6940c3bfb03ae"
+  },
+  "run_id": "poolA-48816820",
+  "seed": 20260718
+}

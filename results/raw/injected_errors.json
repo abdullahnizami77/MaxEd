@@ -1,0 +1,266 @@
+[
+  {
+    "error_id": "E-CLEAN-S-A-01",
+    "tier": 0,
+    "scenario_id": "S-A-01",
+    "truth": "clean",
+    "expected_kind": "none",
+    "expected_action": "human_gate",
+    "draft": "Dear Harbor & Finch Design Co. team,\n\nThank you for reaching out about your account. Here is the current position as of 2026-03-31.\n\nThe balance due on your account is $14,375.50.\n\nThis balance reflects the following open invoices:\n- INV-2943 dated 2026-02-03, due 2026-03-05: $12,400.00 overdue.\n- INV-2959 dated 2026-03-02, due 2026-04-01: $1,975.50 outstanding.\n\nIf you have questions about any of the items above, please reply to this message and we will be glad to walk through them with you.\n\nKind regards,\nAccounts Receivable",
+    "decision_action": "human_gate",
+    "decision_reason": "all checks passed",
+    "failed_statuses": [],
+    "claims_total": 12,
+    "caught": false
+  },
+  {
+    "error_id": "E-CLEAN-S-A-02",
+    "tier": 0,
+    "scenario_id": "S-A-02",
+    "truth": "clean",
+    "expected_kind": "none",
+    "expected_action": "human_gate",
+    "draft": "Dear Harbor & Finch Design Co. team,\n\nThank you for reaching out about your account. Here is the current position as of 2026-03-31.\n\nThe balance due on your account is $2,150.00.\n\nThis balance reflects the following open invoices:\n- INV-2987 dated 2026-01-20, due 2026-02-19: $6,300.00 overdue.\n- INV-3014 dated 2026-02-11, due 2026-03-13: $2,150.00 overdue.\n\nWe have received your payment PMT-0265 of $6,300.00, which has not yet been applied to a specific invoice. It is reflected in the balance above.\n\nIf you have questions about any of the items above, please reply to this message and we will be glad to walk through them with you.\n\nKind regards,\nAccounts Receivable",
+    "decision_action": "human_gate",
+    "decision_reason": "all checks passed",
+    "failed_statuses": [],
+    "claims_total": 14,
+    "caught": false
+  },
+  {
+    "error_id": "E-CLEAN-S-A-03",
+    "tier": 0,
+    "scenario_id": "S-A-03",
+    "truth": "clean",
+    "expected_kind": "none",
+    "expected_action": "human_gate",
+    "draft": "Dear Harbor & Finch Design Co. team,\n\nThank you for reaching out about your account. Here is the current position as of 2026-03-31.\n\nThe balance due on your account is $6,650.50.\n\nThis balance reflects the following open invoices:\n- INV-3063 dated 2026-01-15, due 2026-02-14: $5,200.00 overdue.\n- INV-3079 dated 2026-02-26, due 2026-03-28: $1,450.50 overdue.\n\nIf you have questions about any of the items above, please reply to this message and we will be glad to walk through them with you.\n\nKind regards,\nAccounts Receivable",
+    "decision_action": "human_gate",
+    "decision_reason": "all checks passed",
+    "failed_statuses": [],
+    "claims_total": 12,
+    "caught": false
+  },
+  {
+    "error_id": "E-CLEAN-S-A-04",
+    "tier": 0,
+    "scenario_id": "S-A-04",
+    "truth": "clean",
+    "expected_kind": "none",
+    "expected_action": "human_gate",
+    "draft": "Dear Harbor & Finch Design Co. team,\n\nThank you for reaching out about your account. Here is the current position as of 2026-03-31.\n\nThe balance due on your account is $14,100.00.\n\nThis balance reflects the following open invoices:\n- INV-3121 dated 2026-02-14, due 2026-03-16: $3,750.00 overdue.\n- INV-3139 dated 2026-01-27, due 2026-02-26: $11,200.00 overdue.\n\nAn open credit memo CM-0025 of $850.00 is also reflected in the balance above.\n\nIf you have questions about any of the items above, please reply to this message and we will be glad to walk through them with you.\n\nKind regards,\nAccounts Receivable",
+    "decision_action": "human_gate",
+    "decision_reason": "all checks passed",
+    "failed_statuses": [],
+    "claims_total": 14,
+    "caught": false
+  },
+  {
+    "error_id": "E-CLEAN-S-A-05",
+    "tier": 0,
+    "scenario_id": "S-A-05",
+    "truth": "clean",
+    "expected_kind": "none",
+    "expected_action": "human_gate",
+    "draft": "Dear Harbor & Finch Design Co. team,\n\nThank you for reaching out about your account. Here is the current position as of 2026-03-31.\n\nThe balance due on your account is $7,225.00.\n\nThis balance reflects the following open invoices:\n- INV-3169 dated 2026-02-10, due 2026-03-12: $5,400.00 overdue.\n- INV-3198 dated 2026-01-30, due 2026-03-01: $1,825.00 overdue.\n\nIf you have questions about any of the items above, please reply to this message and we will be glad to walk through them with you.\n\nKind regards,\nAccounts Receivable",
+    "decision_action": "human_gate",
+    "decision_reason": "all checks passed",
+    "failed_statuses": [],
+    "claims_total": 12,
+    "caught": false
+  },
+  {
+    "error_id": "E-T1-01-S-A-01",
+    "tier": 1,
+    "scenario_id": "S-A-01",
+    "truth": "corrupted",
+    "expected_kind": "c_amt_or_sum_fail",
+    "expected_action": "revise_or_escalate",
+    "draft": "Dear Harbor & Finch Design Co. team,\n\nThank you for reaching out about your account. Here is the current position as of 2026-03-31.\n\nThe balance due on your account is $14,375.50.\n\nThis balance reflects the following open invoices:\n- INV-2943 dated 2026-02-03, due 2026-03-05: $14,200.00 overdue.\n- INV-2959 dated 2026-03-02, due 2026-04-01: $1,975.50 outstanding.\n\nIf you have questions about any of the items above, please reply to this message and we will be glad to walk through them with you.\n\nKind regards,\nAccounts Receivable",
+    "decision_action": "revise",
+    "decision_reason": "correctable code-check failure",
+    "failed_statuses": [
+      "fail"
+    ],
+    "claims_total": 12,
+    "caught": true
+  },
+  {
+    "error_id": "E-T1-01-S-A-02",
+    "tier": 1,
+    "scenario_id": "S-A-02",
+    "truth": "corrupted",
+    "expected_kind": "c_amt_or_sum_fail",
+    "expected_action": "revise_or_escalate",
+    "draft": "Dear Harbor & Finch Design Co. team,\n\nThank you for reaching out about your account. Here is the current position as of 2026-03-31.\n\nThe balance due on your account is $2,150.00.\n\nThis balance reflects the following open invoices:\n- INV-2987 dated 2026-01-20, due 2026-02-19: $6,030.00 overdue.\n- INV-3014 dated 2026-02-11, due 2026-03-13: $2,150.00 overdue.\n\nWe have received your payment PMT-0265 of $6,300.00, which has not yet been applied to a specific invoice. It is reflected in the balance above.\n\nIf you have questions about any of the items above, please reply to this message and we will be glad to walk through them with you.\n\nKind regards,\nAccounts Receivable",
+    "decision_action": "revise",
+    "decision_reason": "correctable code-check failure",
+    "failed_statuses": [
+      "fail"
+    ],
+    "claims_total": 14,
+    "caught": true
+  },
+  {
+    "error_id": "E-T1-02-S-A-01",
+    "tier": 1,
+    "scenario_id": "S-A-01",
+    "truth": "corrupted",
+    "expected_kind": "c_exist_fail",
+    "expected_action": "escalate",
+    "draft": "Dear Harbor & Finch Design Co. team,\n\nThank you for reaching out about your account. Here is the current position as of 2026-03-31.\n\nThe balance due on your account is $14,375.50.\n\nThis balance reflects the following open invoices:\n- INV-9000 dated 2026-02-03, due 2026-03-05: $12,400.00 overdue.\n- INV-2959 dated 2026-03-02, due 2026-04-01: $1,975.50 outstanding.\n\nIf you have questions about any of the items above, please reply to this message and we will be glad to walk through them with you.\n\nKind regards,\nAccounts Receivable",
+    "decision_action": "escalate",
+    "decision_reason": "fabricated document reference",
+    "failed_statuses": [
+      "fail",
+      "fail",
+      "fail",
+      "fail",
+      "unverifiable"
+    ],
+    "claims_total": 12,
+    "caught": true
+  },
+  {
+    "error_id": "E-T1-02-S-A-02",
+    "tier": 1,
+    "scenario_id": "S-A-02",
+    "truth": "corrupted",
+    "expected_kind": "c_exist_fail",
+    "expected_action": "escalate",
+    "draft": "Dear Harbor & Finch Design Co. team,\n\nThank you for reaching out about your account. Here is the current position as of 2026-03-31.\n\nThe balance due on your account is $2,150.00.\n\nThis balance reflects the following open invoices:\n- INV-9000 dated 2026-01-20, due 2026-02-19: $6,300.00 overdue.\n- INV-3014 dated 2026-02-11, due 2026-03-13: $2,150.00 overdue.\n\nWe have received your payment PMT-0265 of $6,300.00, which has not yet been applied to a specific invoice. It is reflected in the balance above.\n\nIf you have questions about any of the items above, please reply to this message and we will be glad to walk through them with you.\n\nKind regards,\nAccounts Receivable",
+    "decision_action": "escalate",
+    "decision_reason": "fabricated document reference",
+    "failed_statuses": [
+      "fail",
+      "fail",
+      "fail",
+      "fail",
+      "unverifiable"
+    ],
+    "claims_total": 14,
+    "caught": true
+  },
+  {
+    "error_id": "E-T1-03-S-A-01",
+    "tier": 1,
+    "scenario_id": "S-A-01",
+    "truth": "corrupted",
+    "expected_kind": "c_sum_fail",
+    "expected_action": "revise_or_escalate",
+    "draft": "Dear Harbor & Finch Design Co. team,\n\nThank you for reaching out about your account. Here is the current position as of 2026-03-31.\n\nThe balance due on your account is $14,385.50.\n\nThis balance reflects the following open invoices:\n- INV-2943 dated 2026-02-03, due 2026-03-05: $12,400.00 overdue.\n- INV-2959 dated 2026-03-02, due 2026-04-01: $1,975.50 outstanding.\n\nIf you have questions about any of the items above, please reply to this message and we will be glad to walk through them with you.\n\nKind regards,\nAccounts Receivable",
+    "decision_action": "revise",
+    "decision_reason": "correctable code-check failure",
+    "failed_statuses": [
+      "fail"
+    ],
+    "claims_total": 12,
+    "caught": true
+  },
+  {
+    "error_id": "E-T1-03-S-A-02",
+    "tier": 1,
+    "scenario_id": "S-A-02",
+    "truth": "corrupted",
+    "expected_kind": "c_sum_fail",
+    "expected_action": "revise_or_escalate",
+    "draft": "Dear Harbor & Finch Design Co. team,\n\nThank you for reaching out about your account. Here is the current position as of 2026-03-31.\n\nThe balance due on your account is $2,160.00.\n\nThis balance reflects the following open invoices:\n- INV-2987 dated 2026-01-20, due 2026-02-19: $6,300.00 overdue.\n- INV-3014 dated 2026-02-11, due 2026-03-13: $2,150.00 overdue.\n\nWe have received your payment PMT-0265 of $6,300.00, which has not yet been applied to a specific invoice. It is reflected in the balance above.\n\nIf you have questions about any of the items above, please reply to this message and we will be glad to walk through them with you.\n\nKind regards,\nAccounts Receivable",
+    "decision_action": "revise",
+    "decision_reason": "correctable code-check failure",
+    "failed_statuses": [
+      "fail"
+    ],
+    "claims_total": 14,
+    "caught": true
+  },
+  {
+    "error_id": "T2-SUM-IGNORES-UNAPPLIED",
+    "tier": 2,
+    "scenario_id": "S-A-02",
+    "truth": "corrupted",
+    "expected_kind": "c_sum_or_amt_fail",
+    "expected_action": "revise_or_escalate",
+    "draft": "Dear Client Contact,\n\nThank you for your patience. Please find below the details regarding your current account balance as of 2026-03-31.\n\nThe total balance due is $8,450.00.\n\nThis amount consists of the following open invoices:\n*   INV-2987: $6,300.00\n*   INV-3014: $2,150.00\n\nRegarding payments and credits, we note the following unapplied items:\n*   PMT-0265: $6,300.00\n\nThere are no unapplied credit memos.\n\nPlease let us know if you have any questions regarding these records.\n\nAccounts Receivable",
+    "decision_action": "revise",
+    "decision_reason": "correctable code-check failure",
+    "failed_statuses": [
+      "fail"
+    ],
+    "claims_total": 8,
+    "caught": true
+  },
+  {
+    "error_id": "T2-FULL-ORIGINAL-AMOUNTS",
+    "tier": 2,
+    "scenario_id": "S-A-03",
+    "truth": "corrupted",
+    "expected_kind": "c_sum_or_amt_fail",
+    "expected_action": "revise_or_escalate",
+    "draft": "Dear Client Contact,\n\nThank you for your patience. Please find below the current status of your account with Harbor & Finch Design Co.\n\nThe total balance due is $6,650.50.\n\nPer your request, we are listing every invoice on the account as owing its full original amount:\n\n*   INV-3063: $8,200.00\n*   INV-3079: $1,450.50\n*   INV-3106: $5,600.00\n\nThere are no unapplied payments or unapplied credit memos on this account.\n\nIf you have any questions regarding these figures, please do not hesitate to reach out.\n\nAccounts Receivable",
+    "decision_action": "revise",
+    "decision_reason": "itemized amounts contradict the computed totals",
+    "failed_statuses": [],
+    "claims_total": 7,
+    "caught": true
+  },
+  {
+    "error_id": "T2-CREDITS-ASSUMED-APPLIED",
+    "tier": 2,
+    "scenario_id": "S-A-04",
+    "truth": "corrupted",
+    "expected_kind": "c_sum_or_amt_fail",
+    "expected_action": "revise_or_escalate",
+    "draft": "Dear Client Contact,\n\nThank you for your time. I am writing to provide a summary of the current account status for Harbor & Finch Design Co. as of 2026-03-31.\n\nThe total balance due is $14,100.00.\n\nThe following invoices remain open:\n*   INV-3121: $3,750.00\n*   INV-3139: $11,200.00\n\nPlease note that credit memos are treated as applied and are not listed separately.\n\nIf you have any questions regarding these records, please let us know.\n\nAccounts Receivable",
+    "decision_action": "revise",
+    "decision_reason": "draft is missing required content",
+    "failed_statuses": [],
+    "claims_total": 6,
+    "caught": true
+  },
+  {
+    "error_id": "E-T3-01",
+    "tier": 3,
+    "scenario_id": "S-A-06",
+    "truth": "ambiguous",
+    "expected_kind": "ambiguous_allocation",
+    "expected_action": "abstain_or_escalate",
+    "draft": "",
+    "decision_action": "abstain",
+    "decision_reason": "ambiguous allocation",
+    "failed_statuses": [],
+    "claims_total": 0,
+    "caught": true
+  },
+  {
+    "error_id": "E-T4-S-A-01",
+    "tier": 4,
+    "scenario_id": "S-A-01",
+    "truth": "corrupted",
+    "expected_kind": "fuzzy_unsupported",
+    "expected_action": "revise_or_escalate",
+    "draft": "Dear Harbor & Finch Design Co. team,\n\nThank you for reaching out about your account. Here is the current position as of 2026-03-31.\n\nThe balance due on your account is $14,375.50.\n\nThis balance reflects the following open invoices:\n- INV-2943 dated 2026-02-03, due 2026-03-05: $12,400.00 overdue.\n- INV-2959 dated 2026-03-02, due 2026-04-01: $1,975.50 outstanding.\n\nIf you have questions about any of the items above, please reply to this message and we will be glad to walk through them with you.\n\nKind regards,\nAccounts Receivable\n\nYour account manager approved a waiver of the late fees on this balance.",
+    "decision_action": "revise",
+    "decision_reason": "unsupported fuzzy claim",
+    "failed_statuses": [
+      "unsupported"
+    ],
+    "claims_total": 13,
+    "caught": true
+  },
+  {
+    "error_id": "E-T4-S-A-03",
+    "tier": 4,
+    "scenario_id": "S-A-03",
+    "truth": "corrupted",
+    "expected_kind": "fuzzy_unsupported",
+    "expected_action": "revise_or_escalate",
+    "draft": "Dear Harbor & Finch Design Co. team,\n\nThank you for reaching out about your account. Here is the current position as of 2026-03-31.\n\nThe balance due on your account is $6,650.50.\n\nThis balance reflects the following open invoices:\n- INV-3063 dated 2026-01-15, due 2026-02-14: $5,200.00 overdue.\n- INV-3079 dated 2026-02-26, due 2026-03-28: $1,450.50 overdue.\n\nIf you have questions about any of the items above, please reply to this message and we will be glad to walk through them with you.\n\nKind regards,\nAccounts Receivable\n\nYour account manager approved a waiver of the late fees on this balance.",
+    "decision_action": "revise",
+    "decision_reason": "unsupported fuzzy claim",
+    "failed_statuses": [
+      "unsupported"
+    ],
+    "claims_total": 13,
+    "caught": true
+  }
+]

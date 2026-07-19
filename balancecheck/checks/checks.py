@@ -131,6 +131,14 @@ _OPEN_CONTEXT_RE = re.compile(
     r"\b(?:open|remaining|outstanding|unpaid|still\s+due|due|owe[sd]?|left)\b",
     re.IGNORECASE,
 )
+# A decomposition sentence ("originally $X, of which $Y has been paid,
+# leaving $Z open") legitimately carries the original and applied amounts
+# alongside the open one; condemning them would reject the most transparent
+# partial-payment phrasing there is.
+_DECOMPOSITION_RE = re.compile(
+    r"\b(?:originally|original\s+amount|of\s+which|leaving|partial(?:ly)?)\b",
+    re.IGNORECASE,
+)
 _REMIT_CONTEXT_RE = re.compile(
     r"\b(?:remit|send|wire|transfer|please\s+pay|pay\s+us|kindly\s+(?:send|wire|pay))\b",
     re.IGNORECASE,
@@ -268,13 +276,21 @@ def check_amount(claim: Claim, ledger: Ledger) -> CheckResult:
         # a partially-paid invoice is "open for" its full original amount is
         # materially misleading even though the number appears in the ledger.
         asserts_open = bool(_OPEN_CONTEXT_RE.search(claim.span))
+        decomposes = bool(_DECOMPOSITION_RE.search(claim.span))
         if kind == "invoice":
             open_amt = derive.open_amount(ledger, doc.id)
-            acceptable = (
-                _dedup([open_amt])
-                if asserts_open
-                else _dedup([cents(doc.amount_cents), open_amt])
-            )
+            if asserts_open and decomposes:
+                acceptable = _dedup(
+                    [
+                        open_amt,
+                        cents(doc.amount_cents),
+                        derive.applied_to_invoice(ledger, doc.id),
+                    ]
+                )
+            elif asserts_open:
+                acceptable = _dedup([open_amt])
+            else:
+                acceptable = _dedup([cents(doc.amount_cents), open_amt])
         else:
             unapplied = derive.unapplied_amount(ledger, doc.id)
             acceptable = (
