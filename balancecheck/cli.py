@@ -587,7 +587,17 @@ def cmd_bench_agree(_args) -> int:
             sub = agreement_report(
                 {i: human[i] for i in ids}, {i: judge[i] for i in ids}
             )
-            report[subset_name] = {"n": len(ids), "binary_kappa": sub.get("binary_kappa")}
+            # agreement_report nests the acceptable kappa under ['acceptable'];
+            # there is no top-level 'binary_kappa' key. Reading the right key
+            # (a constant rater on a subset legitimately yields kappa 0, which
+            # is meaningful, not null).
+            acc = sub.get("acceptable", {})
+            report[subset_name] = {
+                "n": len(ids),
+                "binary_kappa": acc.get("kappa"),
+                "raw_agreement": acc.get("raw_agreement"),
+                "pabak": acc.get("pabak"),
+            }
     report["n_labeled"] = len(human)
     report["n_judged"] = len(judge)
     RAW.mkdir(parents=True, exist_ok=True)

@@ -26,7 +26,7 @@ import re
 from collections.abc import Iterable
 from pathlib import Path
 
-from balancecheck.config import Config
+from balancecheck.config import REPO_ROOT, Config
 from balancecheck.contracts.models import (
     CapabilityGapEvent,
     GenerationEvent,
@@ -47,6 +47,7 @@ REPORT_NAMES = (
     "calibration",
     "pairwise",
     "trace_stats",
+    "oracle_crosscheck",
 )
 
 _BLOCK_RE = re.compile(
@@ -242,52 +243,106 @@ def before_after_table(events: Iterable[object]) -> str:
         f"n = {len(paired)} paired scenarios. "
         "n is too small for a significance claim; deltas are directional."
     )
-    lines.extend(_directional_section(events))
+    lines.extend(_directional_section(events, REPO_ROOT / "fixtures"))
     return "\n".join(lines) + "\n"
 
 
 # The behaviors the Pool A edits targeted, as deterministic draft markers.
 # This closes the brief's actual test: the second batch should be different
 # in the DIRECTION the decisions pointed, not merely score higher.
-_DIRECTIONAL_MARKERS: list[tuple[str, str]] = [
-    ("greets the client by name", "team,"),
-    ("itemizes with issue and due dates", "issued "),
-    ("explains unapplied items in place", "reflected in the balance above"),
-    ("invites reconciliation in the closing", "do not match your records"),
+def _greets_by_name(draft: str, ledger) -> bool | None:
+    return ledger.client.name in draft
+
+
+def _itemizes_with_dates(draft: str, ledger):
+    from balancecheck.substrate import derive
+
+    opens = [i for i in ledger.invoices if derive.open_amount(ledger, i.id) > 0]
+    if not opens:
+        return None
+    return all(i.date.isoformat() in draft and i.due.isoformat() in draft for i in opens)
+
+
+def _explains_unapplied_in_place(draft: str, ledger):
+    from balancecheck.substrate import derive
+
+    has_unapplied = any(
+        derive.unapplied_amount(ledger, p.id) > 0 for p in ledger.payments
+    ) or any(derive.unapplied_amount(ledger, c.id) > 0 for c in ledger.credit_memos)
+    if not has_unapplied:
+        return None
+    return bool(
+        re.search(r"reflected in the balance|reduces the balance|already reflected", draft, re.I)
+    )
+
+
+def _invites_reconciliation(draft: str, ledger) -> bool | None:
+    return bool(re.search(r"(do|does)\s+not\s+match\s+your\s+records|let us know if", draft, re.I))
+
+
+_DIRECTIONAL_BEHAVIORS = [
+    ("greets the client by name", _greets_by_name),
+    ("itemizes open invoices with issue and due dates", _itemizes_with_dates),
+    ("explains unapplied cash or credit in place", _explains_unapplied_in_place),
+    ("invites reconciliation in the closing", _invites_reconciliation),
 ]
 
 
-def _directional_section(events: Iterable[object]) -> list[str]:
+def _directional_section(events: Iterable[object], fixtures_dir: Path) -> list[str]:
+    from balancecheck.contracts.models import Ledger
+
+    passes = ("pass1", "pass2", "pass2R")
     drafts: dict[tuple[str, str], str] = {}
-    claim_counts: dict[str, tuple[int, int]] = {}
     for e in events:
-        if isinstance(e, GenerationEvent) and e.is_first_pass and e.pass_label in (
-            "pass1",
-            "pass2",
-        ):
+        if isinstance(e, GenerationEvent) and e.is_first_pass and e.pass_label in passes:
             drafts[(e.pass_label, e.scenario_id)] = e.draft
     if not drafts:
         return []
-    out = ["", "## Directional: the behaviors the Pool A edits targeted", ""]
-    out.append(
-        "Rates over first-pass Pool B drafts; each marker is a deterministic"
-    )
-    out.append("string check named in the generator, not a judged quality.")
+    present_passes = [p for p in passes if any(k[0] == p for k in drafts)]
+
+    ledgers: dict[str, object] = {}
+    for _pl, sid in drafts:
+        if sid not in ledgers:
+            fp = fixtures_dir / f"{sid}.json"
+            if fp.exists():
+                ledgers[sid] = Ledger.model_validate_json(fp.read_text(encoding="utf-8"))
+
+    out = ["", "## Directional: the behaviours the Pool A edits targeted", ""]
+    out.append("Each behaviour is a code-derived check over the first-pass draft")
+    out.append("(the client name, the issue and due dates of every open invoice, an")
+    out.append("in-place explanation of unapplied items, a reconciliation invite), not")
+    out.append("a fixed golden phrase. A behaviour that cannot apply to a scenario (no")
+    out.append("unapplied item) is excluded from that scenario's denominator. The pass2R")
+    out.append("column is the random-memory ablation: relevant retrieval versus arbitrary")
+    out.append("examples, the comparison that isolates the retrieval function.")
     out.append("")
-    header = ["behavior", "pass1", "pass2"]
+    header = ["behaviour", *present_passes]
     rows: list[list[str]] = []
-    for label, marker in _DIRECTIONAL_MARKERS:
-        counts = {}
-        for pl in ("pass1", "pass2"):
-            hits = sum(
-                1
-                for (p, _sid), d in drafts.items()
-                if p == pl and marker in d
-            )
-            total = sum(1 for (p, _sid) in drafts if p == pl)
-            counts[pl] = f"{hits}/{total}"
-        rows.append([label, counts["pass1"], counts["pass2"]])
+    for label, fn in _DIRECTIONAL_BEHAVIORS:
+        row = [label]
+        for pl in present_passes:
+            present = applicable = 0
+            for (p, sid), d in drafts.items():
+                if p != pl or sid not in ledgers:
+                    continue
+                verdict = fn(d, ledgers[sid])
+                if verdict is None:
+                    continue
+                applicable += 1
+                present += 1 if verdict else 0
+            row.append(f"{present}/{applicable}" if applicable else "n/a")
+        rows.append(row)
     out.extend(_table(header, rows))
+
+    # Draft length makes the pairwise length-bias confound visible: the after
+    # drafts are longer, so a judge preference could reflect length, which is
+    # why the code-grounded first-pass metric above is the primary evidence.
+    out.append("")
+    len_row = ["mean first-pass draft length (chars)"]
+    for pl in present_passes:
+        ds = [d for (p, _s), d in drafts.items() if p == pl]
+        len_row.append(str(sum(len(d) for d in ds) // len(ds)) if ds else "n/a")
+    out.extend(_table(["measure", *present_passes], [len_row]))
     return out
 
 
@@ -488,6 +543,15 @@ def pairwise_table(raw_dir: Path) -> str:
         "inconsistency rate (an upper bound on position bias): "
         f"{_ratio(flipped, len(rows))}"
     )
+    lines.append("")
+    lines.append(
+        "Position bias is the defended failure mode (both orderings, ties on"
+        " disagreement). Length bias is NOT defended here: the after-drafts are"
+        " systematically longer (see the draft-length row in the before/after"
+        " report), so this pairwise preference is confounded with length. The"
+        " primary before/after evidence is therefore the code-grounded"
+        " first-pass metric, not this judged preference."
+    )
     return "\n".join(lines) + "\n"
 
 
@@ -525,6 +589,77 @@ def trace_stats(events: Iterable[object]) -> str:
 # ---------------------------------------------------------------------------
 
 
+def oracle_crosscheck_table(events: Iterable[object], fixtures_dir: Path) -> str:
+    """Run the independent grounding oracle over every first-pass draft and
+    compare it to the gate's grounding verdict.
+
+    This is what makes the independence real: the oracle (which shares no code
+    with the gate's checkers) is actually run in the harness, and any draft
+    where the two disagree is surfaced as a finding rather than inherited as a
+    shared blind spot.
+    """
+    from balancecheck.bench.oracle import oracle_grounding
+
+    events = list(events)
+    gens = {
+        e.gen_id: e
+        for e in events
+        if isinstance(e, GenerationEvent) and e.is_first_pass and e.draft
+    }
+    scores = {
+        e.gen_id: e for e in events if isinstance(e, ScoreEvent) and e.stage == "first_pass"
+    }
+    checked = 0
+    agree = 0
+    disagreements: list[list[str]] = []
+    for gen_id, gen in sorted(gens.items()):
+        fixture = fixtures_dir / f"{gen.scenario_id}.json"
+        sc = scores.get(gen_id)
+        if not fixture.exists() or sc is None:
+            continue
+        result = oracle_grounding(gen.draft, fixture)
+        oracle_clean = result["total"] > 0 and result["verified"] == result["total"]
+        gate_clean = sc.grounding_total > 0 and sc.grounding_checked == sc.grounding_total
+        checked += 1
+        if oracle_clean == gate_clean:
+            agree += 1
+        else:
+            disagreements.append(
+                [
+                    gen.scenario_id,
+                    f"{sc.grounding_checked}/{sc.grounding_total}",
+                    f"{result['verified']}/{result['total']}",
+                    ", ".join(u["token"] for u in result["unmatched"]) or "(none)",
+                ]
+            )
+
+    lines = [
+        "# Independent oracle cross-check",
+        "",
+        "The grounding oracle shares no code with the gate's checkers (it",
+        "replays the raw fixture and reads the draft with its own parsers). It",
+        "is run over every first-pass draft; agreement is a real independent",
+        "confirmation, and any disagreement is a finding, not a shared blind",
+        "spot.",
+        "",
+        f"Drafts cross-checked: {checked}. Gate and oracle agree on the",
+        f"clean-or-not verdict: {agree}/{checked} ({_pct(agree, checked)}).",
+        "",
+    ]
+    if disagreements:
+        lines.append("Disagreements (inspect: a checker bug or an oracle bug):")
+        lines.append("")
+        lines.extend(
+            _table(
+                ["scenario", "gate grounding", "oracle grounding", "oracle unmatched"],
+                disagreements,
+            )
+        )
+    else:
+        lines.append("No disagreements: the two independent paths concur on every draft.")
+    return "\n".join(lines) + "\n"
+
+
 def write_all(cfg: Config, results_dir: Path, raw_dir: Path) -> dict[str, Path]:
     """Generate every results/*.md from the event log and raw JSON files.
 
@@ -539,6 +674,7 @@ def write_all(cfg: Config, results_dir: Path, raw_dir: Path) -> dict[str, Path]:
         "calibration": calibration_table(raw_dir),
         "pairwise": pairwise_table(raw_dir),
         "trace_stats": trace_stats(events),
+        "oracle_crosscheck": oracle_crosscheck_table(events, REPO_ROOT / "fixtures"),
     }
     results_dir.mkdir(parents=True, exist_ok=True)
     written: dict[str, Path] = {}

@@ -203,6 +203,7 @@ def test_write_all_is_deterministic(populated, tmp_path: Path) -> None:
         "calibration.md",
         "capability_gaps.md",
         "injected_errors.md",
+        "oracle_crosscheck.md",
         "pairwise.md",
         "trace_stats.md",
     ]
