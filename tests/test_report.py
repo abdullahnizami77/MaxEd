@@ -319,7 +319,7 @@ def test_trace_stats_counts(populated) -> None:
 
 
 README_TEMPLATE = (
-    "# BALANCECHECK\n"
+    "# Maxed Verify\n"
     "\n"
     "intro prose that must survive injection untouched.\n"
     "\n"

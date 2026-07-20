@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Deterministic generator for the "How BALANCECHECK works" flowchart SVG.
+Deterministic generator for the "How Maxed Verify works" flowchart SVG.
 
 Stdlib only. No randomness, no clock, no network, no external references.
 Byte-identical on every run.
@@ -157,7 +157,7 @@ def baseline(top, i, fs):
 # ==========================================================================
 # CONTENT  (all copy lives here, separate from the layout code)
 # ==========================================================================
-TITLE = 'How BALANCECHECK works'
+TITLE = 'How Maxed Verify works'
 SUBTITLE = ('Draft the reply, check every claim, stop safely, '
             'and learn from human decisions.')
 BANNER = ('Every draft, check, tool call, decision and score is recorded '
@@ -212,7 +212,7 @@ LAB_RIGHT = 'Ambiguous or unverifiable'
 FB_LEFT = 'Re-draft with the exact correction'
 FB_RIGHT = 'Used on a future similar account'
 
-DESC = ('Vertical flowchart of the BALANCECHECK pipeline. Step 1 reads the '
+DESC = ('Vertical flowchart of the Maxed Verify pipeline. Step 1 reads the '
         'account records: invoices, payments, credit notes and how each '
         'payment was applied. Step 2 computes the trusted facts in code. '
         'Step 3 drafts the client reply with a small language model. Step 4 '

@@ -1,10 +1,10 @@
-# BALANCECHECK
+# Maxed Verify
 
 A drafting agent for accounts receivable that checks its own work, learns from every human decision, and proves the improvement with numbers.
 
-## 1. What BALANCECHECK does
+## 1. What Maxed Verify does
 
-BALANCECHECK writes one kind of message: a reply to a client explaining what they owe.
+Maxed Verify writes one kind of message: a reply to a client explaining what they owe.
 
 A small language model writes the draft. Before the draft reaches a person, code reads it back and checks every amount, total, invoice number, date, and status against the ledger. If a claim is wrong, the system does not send the draft. It either sends the draft back to the model with the exact correction, refuses to draft at all, or hands the case to a person.
 
@@ -529,11 +529,11 @@ The model is pinned by the identifier the endpoint serves. That endpoint does no
 
 | Paper | Authors | Venue | Why it matters here |
 |---|---|---|---|
-| MiniCheck: Efficient Fact-Checking of LLMs on Grounding Documents | Tang, Laban, Durrett | EMNLP 2024 | Motivates checking each claim against evidence and reporting balanced accuracy. BALANCECHECK replaces the learned fact-checker with deterministic ledger checks wherever the claim can be computed. |
+| MiniCheck: Efficient Fact-Checking of LLMs on Grounding Documents | Tang, Laban, Durrett | EMNLP 2024 | Motivates checking each claim against evidence and reporting balanced accuracy. Maxed Verify replaces the learned fact-checker with deterministic ledger checks wherever the claim can be computed. |
 | FActScore: Fine-grained Atomic Evaluation of Factual Precision in Long Form Text Generation | Min et al. | EMNLP 2023 | Motivates splitting generated text into individually checkable claims and measuring what share of them a trusted source supports. |
 | Chain-of-Verification Reduces Hallucination in Large Language Models | Dhuliawala et al. | Findings of ACL 2024 | Motivates keeping verification separate from generation. The fuzzy verifier here sees one claim and the matching records, never the surrounding draft. |
 | G-Eval: NLG Evaluation using GPT-4 with Better Human Alignment | Liu et al. | EMNLP 2023 | Motivates structured LLM evaluation with separate criteria. The judge emits schema-constrained scores for tone, clarity, and overall acceptability. |
 | Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena | Zheng et al. | NeurIPS 2023, Datasets and Benchmarks Track | Motivates testing both presentation orders in pairwise judging and treating an order-dependent disagreement as a tie rather than a real preference. |
 | Evaluating Evaluation Metrics: The Mirage of Hallucination Detection | Kulkarni et al. | Findings of EMNLP 2025 | Motivates temperature-zero decoding, caution about cheap automatic faithfulness metrics, and calibrating the LLM judge against human labels. |
-| SelfCheckGPT: Zero-Resource Black-Box Hallucination Detection for Generative Large Language Models | Manakul, Liusie, Gales | EMNLP 2023 | The sampling-based self-consistency approach used here as a contrast. BALANCECHECK does not infer truth from agreement between repeated generations. |
+| SelfCheckGPT: Zero-Resource Black-Box Hallucination Detection for Generative Large Language Models | Manakul, Liusie, Gales | EMNLP 2023 | The sampling-based self-consistency approach used here as a contrast. Maxed Verify does not infer truth from agreement between repeated generations. |
 | Too Consistent to Detect: A Study of Self-Consistent Errors in LLMs | Tan et al. | EMNLP 2025 | Shows that confidently repeated errors can slip past consistency-based detectors. This supports checking every computable claim against external ledger truth instead. |
