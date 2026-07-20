@@ -2,24 +2,103 @@
 
 A drafting agent for accounts receivable that checks its own work, learns from every human decision, and proves the improvement with numbers.
 
-It drafts client replies that explain a balance due. Before any draft reaches a human, code checks every number, date, document reference, and status claim in it against the ledger. Every human decision (approve, edit, decline) becomes memory that changes the next batch of drafts. An evaluation harness measures whether the drafts actually got better, with a judge that is itself calibrated against human labels.
+## 1. What BALANCECHECK does
 
-## Quick start (no model, no credentials)
+BALANCECHECK writes one kind of message: a reply to a client explaining what they owe.
 
-```bash
-python3 -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
-make fixtures   # build the 12 synthetic client scenarios
-make demo       # run the full draft-verify-decide loop in stub mode
-make test       # 318 tests
+A small language model writes the draft. Before the draft reaches a person, code reads it back and checks every amount, total, invoice number, date, and status against the ledger. If a claim is wrong, the system does not send the draft. It either sends the draft back to the model with the exact correction, refuses to draft at all, or hands the case to a person.
+
+When a person reviews a draft, their decision is recorded: approve, edit, or decline. Those decisions are stored and used to write better drafts on the next run. A separate test harness then measures whether the drafts actually got better, and reports numbers instead of opinions.
+
+So there are three jobs:
+
+| Job | How it is done |
+|---|---|
+| Catch its own wrong drafts | Code checks every claim against the ledger. A fixed rule table picks the outcome. |
+| Learn from humans | Every review decision is saved and fed back as retrieved examples. |
+| Prove it improved | All numbers are regenerated from the event log by a report command. |
+
+Two rules hold everywhere in the system:
+
+1. The model never does arithmetic. Code computes every figure and puts it in the prompt. The model only writes the sentence around it.
+2. No draft is ever sent automatically. The best outcome the agent can reach on its own is "ready for a person to review".
+
+## 2. Architecture diagram
+
+```mermaid
+flowchart LR
+    L[Ledger fixtures] --> D["Drafter<br/>small local model"]
+    D --> E["Claim extraction<br/>code, finds all it can"]
+    E --> C["Checks<br/>code for numbers,<br/>model only for soft claims"]
+    C --> G{Gate}
+    G -->|wrong but fixable| D
+    G -->|records unclear| A["Abstain and<br/>record the gap"]
+    G -->|cannot verify| H2[Send to a person]
+    G -->|all checks pass| H[Human review]
+    H -->|approve / edit / decline| S[(Event log)]
+    D --> S
+    C --> S
+    S --> M["Memory<br/>keyed by ledger structure"]
+    M -->|"approved and edited<br/>examples"| D
+    S --> R["Reports<br/>every number from the log"]
 ```
 
-The demo shows the two ends of the loop: a clean scenario reaches the human gate, and a scenario whose records are genuinely ambiguous is refused (the agent abstains and records exactly what it would need to proceed).
+The loop has six steps.
 
-## Results at a glance
+**1. Draft.** A small local model writes the reply. Every figure it needs (open amounts, totals, statuses) is computed by code first and passed in the prompt. The model copies those figures and explains them.
 
-Every number in the blocks below is generated from the event log by `make report` and injected by `make readme`. A test fails if any of them is edited by hand.
+**2. Extract.** Code reads the draft back and pulls out every claim that can be checked: amounts, totals, invoice and payment references, dates, statuses. The extractor is tuned to flag too much rather than too little. If it sees something that looks like a claim but cannot work out what it refers to, the case goes to a person. It is never dropped quietly.
 
-### Did the verifier catch injected errors?
+**3. Check.** Code compares every extracted claim against the ledger. Only soft claims, such as "as we discussed", go to a model verifier, and that verifier sees one sentence plus the matching records, never the rest of the draft. Two more checks look at the draft as a whole: the listed amounts must add up to the stated totals, and required content (the balance, the open invoices, any unapplied money) must actually be present.
+
+**4. Decide.** A fixed rule table picks one of four outcomes:
+
+| Outcome | When | What happens |
+|---|---|---|
+| Revise | A wrong claim can be corrected from the ledger | The draft goes back to the model with the exact correction |
+| Abstain | The records cannot support any trustworthy draft | No draft is written, and the reason is logged as a capability gap |
+| Escalate | A claim cannot be verified either way | A person is asked to look |
+| Human gate | Every check passed | The draft is queued for human review |
+
+**5. Learn.** Approved and edited drafts are stored in a memory keyed by the shape of the ledger case (unapplied cash, partial payment, open credit, and so on). The next run looks up the closest matching examples and puts them in the prompt. Evaluation scenarios sit in a separate pool that never enters memory, and a test enforces that split.
+
+**6. Prove.** Every report is built only from the event log. Nothing is typed by hand.
+
+## 3. Key design decisions
+
+| Decision | Why |
+|---|---|
+| Money is stored as whole cents, never as a decimal number | Comparisons are exact and JSON round-trips without loss. Rounding bugs cannot happen. |
+| Payment applications are their own record type | This makes unapplied cash, partial payments, and misapplied payments possible to represent. Those cases are where real accounts receivable goes wrong. |
+| The model never calculates | Code computes every number before drafting and re-checks every number after. Nothing depends on the model getting maths right. |
+| The model verifier sees one claim, not the draft | It gets a single sentence and the matching records, so the rest of the draft cannot talk it into agreeing. |
+| A number with no clear owner is escalated | If an amount happens to match some unrelated ledger row, that is a coincidence, not proof. Coincidences go to a person. |
+| Each claim is bound to a document and a role | The extractor records which invoice the number refers to and which figure it is (open, original, applied, or account total). The checker then verifies that exact figure instead of guessing from nearby words. |
+| The evaluation has its own separate checker | An independently written grounding oracle shares no code with the gate, so a blind spot in the gate cannot hide inside the evaluation. |
+| Calibration labels were written blind and committed first | The human labels were made on a shuffled set with the corruption map sealed, and committed before the judge was ever run. |
+| Judge disagreements are counted as ties | Each pairwise comparison runs in both orders. If the two orders disagree, it counts as a tie, and the disagreement rate is reported. |
+
+### What adversarial testing changed
+
+Before the live runs, six independent reviewers attacked the system by executing it, not by reading it. The statistics code, the ledger arithmetic, and the decision table all held. The extraction layer did not: 18 of 23 crafted wrong drafts reached the human gate. Every one of those routes is now closed, and the whole attack set is a regression test in `tests/test_adversarial_regressions.py`. The re-measured escape rate is zero, and no correct sentence is now wrongly rejected.
+
+The first live run then showed a harder case: drafts where every single claim is true but the draft as a whole misleads. One example listed the full original amounts of each invoice next to a correct, smaller total. Two whole-draft checks now catch this class, locked in by tests that replay the exact live escapes.
+
+A later, deeper review found that those checks shared one root cause. The checkers were working out which invoice and which figure an amount referred to by looking at nearby words. That failed in both directions: a per-invoice amount was tested against the account total, a wrong amount was accepted because it happened to match the invoice's original amount, and a status word was applied to two invoices at once and produced claims nobody wrote. The fix was the binding change in the table above, covered by `tests/test_binding_regressions.py`.
+
+The same review found three more problems, all now fixed:
+
+| Problem | Fix |
+|---|---|
+| The revise-and-recheck path had never actually run end to end, because first drafts always passed | `tests/test_revise_loop_e2e.py` drives the loop through a real revision |
+| The completeness score counted whether a word appeared, not whether a claim was verified | Completeness is now computed from verified claims in `bench/score.py` |
+| The independent oracle existed but was never called by the harness | It now runs over every first-pass draft, and its result is reported |
+
+## 4. Results at a glance
+
+Every number in the grey blocks in this README is generated from the event log by `make report` and inserted by `make readme`. A test fails if any of them is edited by hand.
+
+The headline test: 12 known errors were deliberately injected into drafts across four difficulty tiers, plus 5 clean drafts as controls. A tier passes only if the system catches the corrupted drafts and lets the clean ones through.
 
 <!-- BC:BEGIN injected_errors -->
 # Injected errors
@@ -86,7 +165,42 @@ Tier 3: balanced accuracy 100% (catch rate 1/1 (100%), clean-pass rate 5/5 (100%
 Tier 4: balanced accuracy 100% (catch rate 2/2 (100%), clean-pass rate 5/5 (100%)).
 <!-- BC:END injected_errors -->
 
-### Did the drafts improve after learning?
+What the four tiers mean:
+
+| Tier | The error that was injected |
+|---|---|
+| 0 | Nothing. These are clean drafts. Flagging one is a false alarm. |
+| 1 | An obvious wrong number, a broken total, or an invoice number that does not exist |
+| 2 | Every claim is true but the draft as a whole is misleading |
+| 3 | The records themselves are unclear, so the correct answer is to refuse |
+| 4 | A soft claim with nothing in the records to support it |
+
+Balanced accuracy is reported instead of plain accuracy. Plain accuracy would reward a system that approves everything, because most claims in real drafts are true. Balanced accuracy averages the catch rate on bad drafts with the pass rate on clean ones, so approving everything scores 50 percent.
+
+## 5. Learning and evaluation methodology
+
+### How the learning loop works
+
+The scenarios are split into two pools:
+
+| Pool | Use | Rule |
+|---|---|---|
+| Pool A | Drafts are shown to a human, who approves, edits, or declines them. Those decisions become memory. | May be learned from |
+| Pool B | Used only to measure whether drafts got better. | Never enters memory. A test enforces this. |
+
+Memory is keyed by the shape of the ledger case, not by the client. A scenario with unapplied cash retrieves past examples that also had unapplied cash. This is why an edit made on one client can change the drafts for a client the system has never seen.
+
+Three runs are compared on Pool B:
+
+| Run | Memory used |
+|---|---|
+| pass1 | No memory. This is the "before". |
+| pass2 | Structure-matched memory. This is the "after". |
+| pass2R | Random memory. Same number of examples, chosen at random. |
+
+pass2R is the control. Without it, any improvement could just be the effect of having extra text in the prompt. Comparing pass2 against pass2R isolates whether the retrieval rule itself is doing work.
+
+Scores are read on the first draft of each run, before any revision. Reading the final draft instead would hide the learning, because the revise loop removes number errors regardless of memory.
 
 <!-- BC:BEGIN before_after -->
 # Before/after: first-pass drafts, code-computed
@@ -138,9 +252,41 @@ examples, the comparison that isolates the retrieval function.
 | mean first-pass draft length (chars) | 429 | 637 | 599 |
 <!-- BC:END before_after -->
 
-The headline is in the last two tables. The aggregate grounding and completeness scores were already at the ceiling before learning (the drafter transcribes numbers that code computes, so its figures are usually right). What moved is what the human edits asked for: the second batch of drafts adopted the edited style on held-out scenarios the memory had never seen, greeting the client by name, itemizing with issue and due dates, and explaining unapplied items in place. The directional table shows this, and the random-memory ablation (pass2R) shows the structure-keyed retrieval matters: it explained unapplied items in place on both applicable scenarios where random memory managed one. Verified claim density rose (see the per-pass grounding counts) at an unchanged 100 percent pass rate: richer drafts, still fully grounded. The draft-length row is shown deliberately, because it is why the judged pairwise preference is treated as secondary to the code-grounded metric.
+How to read that:
+
+- The grounding and completeness rates were already at 100 percent before learning, so they had no room to rise. That is expected: code computes the figures, so the drafter rarely gets one wrong.
+- What did move is the number of verified claims per draft, shown in the grounding counts. The second batch of drafts says more, and all of it still checks out.
+- The behaviour table is the real result. The three behaviours the human edits asked for went from almost never to always, on scenarios the memory had never seen.
+- The random-memory control (pass2R) matched pass2 on the easy behaviours but not on explaining unapplied items in place, which is the behaviour that depends on retrieving a structurally similar case.
+- Draft length is reported because the after-drafts are longer. That matters for the judge result below.
+
+### How the judge is evaluated
+
+A language model judge scores drafts, but it is never trusted with numbers. Grounding is always checked by code. The judge only rates things code cannot: tone, clarity, and an overall accept or reject.
+
+Because the judge is a model, it is itself measured. 16 drafts were labelled by hand, blind, with the corruption map sealed, and the labels were committed before the judge ran. Agreement is reported as Cohen's kappa with a bootstrap confidence interval.
+
+<!-- BC:BEGIN calibration -->
+# Judge calibration
+
+| dimension | kappa | 95% CI (bootstrap) | PABAK | raw agreement |
+|---|---|---|---|---|
+| acceptable (accept/reject) | 0.746 | [0.347, 1.000] | 0.750 | 0.875 |
+| tone (1-4, weighted) | 0.091 | [-0.306, 0.636] | n/a | 0.688 |
+| clarity (1-4, weighted) | 0.267 | [-0.065, 0.649] | n/a | 0.562 |
+
+By draft class: clean subset kappa 0.600 (n=8, raw 0.875); corrupted subset kappa 0.000 (n=8, raw 0.875). The corrupted-subset kappa is 0 by the constant-rater degeneracy (every corrupted draft is labelled not-acceptable), which is exactly why raw agreement and PABAK are reported alongside kappa.
+
+What this measures: the acceptable dimension is the holistic accept-or-reject call (tone and completeness together), NOT grounding, which is checked by code. Kappa on n=16 carries a wide CI (its upper bound touches 1.0 as a small-sample bootstrap boundary artifact) and is a calibration signal, not a certification.
+<!-- BC:END calibration -->
+
+This shape was predicted before the numbers were measured: agreement is decent on the accept-or-reject call and poor on taste. Both disagreements on the accept call were the judge being wrong, not the human. In one it missed an unsupported claim, in the other it invented a problem in a correct draft. That is the reason nothing in this system lets the judge near arithmetic.
+
+Kappa can be misleading when one label dominates, which is what the corrupted subset shows: every corrupted draft is rejected by both raters, so kappa is 0 even though they agree 7 times out of 8. Raw agreement and PABAK are printed next to kappa for exactly this reason.
 
 ### Does a judge prefer the after-drafts?
+
+Each pass1 draft is compared against its pass2 counterpart, twice: once with pass1 shown first, once with pass2 shown first. If the two orders disagree, it is counted as a tie.
 
 <!-- BC:BEGIN pairwise -->
 # Pairwise: pass1 vs pass2 first drafts, both orderings
@@ -157,39 +303,11 @@ inconsistency rate (an upper bound on position bias): 0/5 (0%)
 Position bias is the defended failure mode (both orderings, ties on disagreement). Length bias is NOT defended here: the after-drafts are systematically longer (see the draft-length row in the before/after report), so this pairwise preference is confounded with length. The primary before/after evidence is therefore the code-grounded first-pass metric, not this judged preference.
 <!-- BC:END pairwise -->
 
-### Can the judge be trusted?
+One bias is defended and one is not, and the difference is stated openly. Running both orders defends against position bias, which is a judge preferring whichever draft it sees first. It does not defend against length bias. The after-drafts are longer, and judges tend to prefer longer text. So this result supports the main finding but is not the main finding. The code-computed behaviour table above is.
 
-<!-- BC:BEGIN calibration -->
-# Judge calibration
+### Do two independent checkers agree?
 
-| dimension | kappa | 95% CI (bootstrap) | PABAK | raw agreement |
-|---|---|---|---|---|
-| acceptable (accept/reject) | 0.746 | [0.347, 1.000] | 0.750 | 0.875 |
-| tone (1-4, weighted) | 0.091 | [-0.306, 0.636] | n/a | 0.688 |
-| clarity (1-4, weighted) | 0.267 | [-0.065, 0.649] | n/a | 0.562 |
-
-By draft class: clean subset kappa 0.600 (n=8, raw 0.875); corrupted subset kappa 0.000 (n=8, raw 0.875). The corrupted-subset kappa is 0 by the constant-rater degeneracy (every corrupted draft is labelled not-acceptable), which is exactly why raw agreement and PABAK are reported alongside kappa.
-
-What this measures: the acceptable dimension is the holistic accept-or-reject call (tone and completeness together), NOT grounding, which is checked by code. Kappa on n=16 carries a wide CI (its upper bound touches 1.0 as a small-sample bootstrap boundary artifact) and is a calibration signal, not a certification.
-<!-- BC:END calibration -->
-
-The shape was predicted before measuring: agreement is high on the grounded accept-or-reject call and low on taste (tone, clarity). Both disagreements on the accept call were the judge being wrong, not the human: it missed an unsupported claim in one draft and invented a problem in a correct one. That is why nothing in this system trusts the judge with arithmetic.
-
-### Where is the agent blind?
-
-<!-- BC:BEGIN capability_gaps -->
-# Capability gaps
-
-| category | count | gen_ids |
-|---|---|---|
-| allocation_reference | 5 | errors-S-A-06-r0, poolA-S-A-06-r0, pass1-S-B-06-r0, pass2-S-B-06-r0, pass2R-S-B-06-r0 |
-
-Total capability gaps: 5.
-<!-- BC:END capability_gaps -->
-
-Every abstention names its category. Five abstentions tracing to missing allocation references is a product backlog item (request remittance advice from clients), not a log curiosity.
-
-### Do two independent grounding paths agree?
+The evaluation harness contains a second grounding checker, called the oracle. It shares no code with the gate. It reads the raw fixture and parses the draft with its own logic. If both agree that a draft is clean, that is real independent confirmation. If they disagree, that is a finding.
 
 <!-- BC:BEGIN oracle_crosscheck -->
 # Independent oracle cross-check
@@ -206,43 +324,35 @@ clean-or-not verdict: 20/20 (100%).
 No disagreements: the two independent paths concur on every draft.
 <!-- BC:END oracle_crosscheck -->
 
-The oracle shares no code with the gate's checkers, so this agreement is a real independent confirmation of the grounding, not a restatement of it. During the live run the cross-check found a figure the oracle did not recognize (an invoice's applied amount in a partial-payment decomposition); that was a gap in the oracle, now fixed, and it is exactly the kind of finding an independent path exists to surface.
+During the live run this cross-check did find something. The oracle failed to recognise one figure, an invoice's applied amount inside a partial-payment breakdown. That was a gap in the oracle, and it is now fixed. Surfacing that kind of thing is the whole reason a second independent checker exists.
 
-### Model calls
+## 6. Agentic recovery ablation
 
-<!-- BC:BEGIN trace_stats -->
-# Trace stats
+The main loop uses one cheap model call per draft, over figures code has already computed. That is the fast path and it is the default.
 
-| task | attempts | ok | ok rate |
-|---|---|---|---|
-| draft | 23 | 23 | 100% |
-| judge_pairwise | 10 | 10 | 100% |
-| judge_rubric | 16 | 16 | 100% |
-| verify_fuzzy | 2 | 2 | 100% |
+There is an optional second path, switched on with `BC_REVISION_MODE=agentic`. It spends more model effort, and only after the gate has already found a fixable error. In that mode the model may call six read-only accounting tools to look up ledger evidence for itself:
 
-Structured-parse failures: 0
-Total trace lines: 51
-<!-- BC:END trace_stats -->
+| Tool | Returns |
+|---|---|
+| account summary | The client's overall balance position |
+| open invoices | The list of invoices still open |
+| get invoice | One invoice by number |
+| unapplied sources | Payments and credits not yet applied |
+| get source | One payment or credit by number |
+| application history | Which payment was applied to which invoice |
 
-Zero structured-parse failures across every judge and verifier call. Structured outputs use JSON-schema constrained decoding at the endpoint, with a validate-and-retry fallback in the client, and the observed malformed rate was zero. Constrained decoding makes malformed JSON very unlikely at the decoder; the retry path is the belt-and-braces behind it.
+The limits are hard:
 
-## Agentic revision recovery (optional runtime path)
+| Limit | Value |
+|---|---|
+| Recoveries per scenario | 1 |
+| Model calls in the recovery | 3 |
+| Tool executions in the recovery | 6 |
+| If the recovery still fails | Escalate to a person, never retry |
 
-The loop above is the fast path: one inexpensive drafting call over facts code
-already computed, verified deterministically. An optional recovery path
-(off by default, BC_REVISION_MODE=agentic) spends more model effort only after
-the gate finds a correctable failure: a bounded agent may call six read-only
-accounting tools (account summary, open invoices, a single invoice, unapplied
-sources, a single source, application history) to gather ledger evidence, then
-writes the corrected draft. Budgets are strict: one recovery per scenario, at
-most three agent calls and six tool executions, then a forced final; a
-recovery that still fails escalates to a human, never loops. The agent cannot
-approve, send, or decide: its draft goes back through the same extraction,
-checks, and gate, and the human gate remains the only successful terminal
-state. Every tool attempt is a typed event in the log.
+The agent cannot approve, send, or decide anything. Its rewritten draft goes back through the same extraction, the same checks, and the same gate. Human review is still the only successful ending. Every tool call is written to the event log as a typed event.
 
-The ablation below ran identical correctable first drafts through both
-revision backends, judged by the same verifier:
+The ablation below took the same set of failed first drafts and revised each one twice: once with the plain prompt backend (one model call carrying the gate's correction) and once with the agentic backend. The same verifier judged both.
 
 <!-- BC:BEGIN agentic_recovery -->
 # Agentic recovery ablation
@@ -277,101 +387,69 @@ Coverage-forced rate: 0/13 (0%). This counts recoveries where the model failed t
 Cost framing: the prompt arm spends 1 LLM call per recovery; the agentic arm spent 2.1 on average plus tools. The fast path (a clean first draft) uses one call and zero tools in both modes.
 <!-- BC:END agentic_recovery -->
 
-Two distinct numbers are reported and must not be conflated. The forced-final
-rate counts recoveries where the model used both tool rounds without emitting
-an acceptable final draft, so the guaranteed third call extracted it; that
-alone does not mean evidence was missing. The coverage-forced rate is the
-honest small-model measure: recoveries where the model failed to gather a
-required tool result and the orchestrator executed it deterministically. When
-the model gathers its own evidence but simply uses its full round budget, the
-forced final has zero coverage-forced, and the numbers below say so. The total
-tool ceiling binds this deterministic backstop too, so a recovery never
-exceeds its configured tool budget; if required evidence still cannot be
-gathered, the recovery escalates rather than accepting an ungrounded draft.
+The honest reading: giving the model tools did not raise the recovery rate. Both backends fixed every case. The agentic arm just cost about twice as many model calls plus tool calls to reach the same place.
 
-## How it works
+That is a real result, not a failure. It says the gate's corrections are precise enough that the model does not need to go looking for evidence. Tool access is worth keeping for cases where the correction cannot be stated as precisely, but on this workload it buys nothing measurable, and the report says so.
 
-```mermaid
-flowchart LR
-    L[Ledger fixtures] --> D[Drafter\nsmall local model]
-    D --> E[Claim extraction\ncode, recall-first]
-    E --> C[Checks\ncode for every number,\nmodel only for soft claims]
-    C --> G{Gate}
-    G -->|wrong, fixable| D
-    G -->|records ambiguous| A[Abstain + gap record]
-    G -->|cannot verify| H2[Escalate to human]
-    G -->|all checks pass| H[Human review]
-    H -->|approve / edit / decline| S[(Event log)]
-    D --> S
-    C --> S
-    S --> M[Memory\nstructure-keyed retrieval]
-    M -->|approved and edited\nexamples| D
-    S --> R[Reports\nevery number from the log]
-```
+Two numbers in that table sound similar and mean different things. Do not mix them up:
 
-One artifact type, complete: the balance-due client reply. The loop is:
-
-1. **Draft.** A small local model writes the reply. Every figure it needs (open amounts, totals, statuses) is computed by code and handed to it in the prompt. The model transcribes and explains; it never does arithmetic.
-2. **Extract.** Code re-reads the draft and pulls out every checkable claim: amounts, totals, document references, dates, statuses. The extractor is built to over-detect. Anything it detects but cannot pin down is escalated, never silently dropped.
-3. **Check.** Every extracted claim is verified against the ledger by code. Only soft claims (things like "as we discussed") go to a model verifier, which sees one sentence and the records, never the rest of the draft. Two aggregate checks then look at the draft as a whole: the itemized amounts must be consistent with the totals, and required content (the balance, the open invoices, any unapplied money) must actually be present.
-4. **Decide.** A fixed rule table picks one of four outcomes: revise (with the exact correction), abstain (the records cannot support any trustworthy draft), escalate (a human must look), or pass to the human gate. Nothing is ever auto-sent.
-5. **Learn.** Approved and edited drafts enter a memory keyed by ledger structure (unapplied cash, partial payments, open credits, and so on). The next run retrieves the most relevant examples into the prompt. Evaluation scenarios are a held-out pool that never enters memory, enforced by test.
-6. **Prove.** Reports are generated only from the event log. The controlled treatment difference between the before and after runs is the memory snapshot and the retrieved context it produces; the model, seed, evaluation fixtures, static prompt files, and configuration are held fixed, which the run manifests record (the manifests also carry the run id, pass label, and retrieval mode, which necessarily differ). The model is pinned by its served identifier; the endpoint does not expose a content digest, so this is an identifier, not a hash.
-
-## What the red team changed
-
-Before the live runs, an execution-based adversarial review (six independent reviewers, a pre-hardening session whose figures are historical and not reconstructible from this repository) attacked the system. The statistics, the ledger arithmetic, and the decision table held. The extraction layer did not: 18 of 23 crafted wrong drafts initially walked through to the human gate. Every escape path was closed and the full attack corpus is now a regression test (`tests/test_adversarial_regressions.py`); the re-measured escape rate is zero, with no true sentence wrongly condemned. The second live run then exposed a subtler class, drafts made only of true claims that mislead as a whole (a correct total beside an itemization that contradicts it; a credit memo silently omitted). Two aggregate gate checks now catch both, locked in by tests that reproduce the exact live escapes.
-
-A later, deeper review found that those checks and the ones added to fix them shared a root cause: the checkers re-derived which document and which figure an amount referred to from brittle substring heuristics, which failed in both directions (a per-invoice amount forced against the account total; a wrong amount accepted because it coincided with the invoice's original amount; a status word cross-multiplied across two invoices into invented claims). The extractor now binds each claim to the document and the ledger role (open, original, applied, or account total) its phrasing names, and the checkers verify exactly that figure; the whole family of false accepts and false rejects is closed and locked in by `tests/test_binding_regressions.py`. The same review found that "revise and re-check" had never actually run end to end (the model's first drafts always passed, so the revision path was dead), that the completeness metric counted token presence rather than verified claims, and that the independent oracle was never invoked in the harness. All three are fixed and covered by `tests/test_revise_loop_e2e.py`, the semantic completeness in `bench/score.py`, and the oracle cross-check that now runs over every draft (the two independent grounding paths agree on all of them).
-
-## Design decisions worth defending
-
-| Decision | Why |
+| Number | Meaning |
 |---|---|
-| Money is integer cents everywhere | Exact equality, lossless JSON, and the oldest bug class in accounting software removed by a type |
-| Applications are first-class records | Unapplied cash, partial payments, and misapplied payments become representable, and they are where real AR breaks live |
-| The model never does arithmetic | Every number is computed by code before drafting and checked by code after; the design does not lean on model correctness |
-| The verifier sees claims, not drafts | The model verifier gets one sentence plus its records, so it cannot be swayed by the surrounding text |
-| An unattributable number escalates | A bare amount matching some unrelated ledger row is not support; coincidence is not verification |
-| The eval has its own oracle | The harness grounds drafts with an independently written checker that shares no code with the gate, so a gate blind spot cannot hide in the eval |
-| Blind labels, committed first | The calibration labels were written against a shuffled set with the corruption map sealed, and committed before the judge ever ran |
-| Judge disagreements count as ties | The pairwise comparison runs in both orders; any flip is a tie, and the flip rate is reported as an upper bound on position bias |
+| Forced final | The model used both tool rounds without producing an acceptable draft, so the guaranteed last call was made to get one. It may still have collected all the evidence it needed. |
+| Coverage forced | The model failed to fetch a required piece of evidence, so the orchestrator fetched it deterministically. This is the honest measure of how much of the work was really the model's. |
 
-## Assumptions
+The tool ceiling also binds those deterministic fetches, so a recovery can never exceed its tool budget. If required evidence still cannot be gathered, the recovery escalates to a person rather than accepting an unsupported draft.
 
-- The ledger is trusted ground truth. This system verifies drafts about the ledger; it does not reconcile the ledger itself. A wrong figure in the fixtures would fool both the gate and the oracle (they share the fixture, not the code).
-- The client-reply artifact is a short prose email. The extractor is tuned for that register (one document per bullet, canonical IDs, dollar and ISO-date forms); a very different format would need its detectors widened.
-- The drafter transcribes numbers that code computes and hands it; it is never asked to do arithmetic. The design assumes a small local model can transcribe and explain, not that it can calculate.
-- The judge assesses only what code cannot (tone, completeness of explanation, an overall accept or reject). Grounding is never delegated to it.
-- The calibration and before/after runs are single-sample at temperature zero on a small held-out pool; they are read as direction, not as statistically significant effects (see the blind-spots section).
+## 7. Limitations
 
-## What was cut, and said so
+### Assumptions
 
-- One artifact type. The account summary and document follow-up artifacts (and their request-list fixtures) are cut; they add volume, not new verification classes.
-- The drafter self-report channel (the model listing its own claims for cross-checking) is designed but not shipped; surface extraction is the enforcement, and the flaky path stays off the critical path.
-- Declined drafts are captured but not consumed as negative examples in v1.
-- No fine-tune run; the captured decisions form the preference data one would consume, and the retrieval memory is the shipped consumption mechanism.
+- The ledger is treated as true. This system checks drafts against the ledger. It does not audit the ledger. A wrong figure in the fixtures would fool the gate and the oracle together, because they share the fixture even though they share no code.
+- The output is a short prose email. The extractor is tuned for that format: one document per bullet, standard ID formats, dollar amounts, ISO dates. A very different format would need wider detection patterns.
+- The drafter is only asked to copy and explain figures, never to calculate. The design assumes a small model can do that. It does not assume the model can do maths.
+- The judge only rates what code cannot rate. Grounding is never handed to it.
+- The calibration and before/after runs are single samples at temperature zero on a small held-out pool. They show direction, not statistical significance.
+
+### What was cut
+
+- Only one artifact type is built: the balance-due client reply. The account summary and document follow-up artifacts were cut. They add volume but no new kind of verification.
+- The drafter self-report channel, where the model lists its own claims for cross-checking, is designed but not built. Code extraction is what enforces correctness, so the less reliable path was left off the critical route.
+- Declined drafts are recorded but not yet used as negative examples.
+- There is no fine-tuning run. The captured decisions are the data one would fine-tune on. Retrieval is the version that shipped.
 - No multi-currency, no manual journal entries, no control-account tie-out.
 
-## Where this would mislead you
+### Where this could mislead you
 
-- **The extractor is the soft underbelly.** Recall-first detection plus escalate-on-unparseable converts most misses into escalations, but a quantitative claim phrased in a way the detector does not flag at all is invisible. The red-team corpus bounds this against known phrasings; novel prose is not covered.
-- **Framing can lie while claims are true.** The aggregate checks catch inconsistent itemizations and missing content, but a draft can still mislead by emphasis or by omitting context no checklist names. One live example (full original amounts presented as owed, beside a correct total) is caught; the general class is not closable at claim level.
-- **The calibration is a signal, not a certification.** Sixteen items, one labeler who also built the system. The confidence interval on the agreement number is wide and reported next to it.
-- **The before and after runs are small.** Six held-out scenarios, one sample each at temperature zero. The direction is consistent across every instrument (claim density, style markers, judge preference), which is the honest basis of the claim, not statistical significance.
-- **Synthetic books are clean books.** No OCR noise, no mid-period corrections, no disputed invoices. Every catch rate here is an upper bound on real-world performance.
+- **The extractor is the weakest part.** It is built to over-detect, and anything it detects but cannot resolve gets escalated. But a claim phrased in a way it does not flag at all is invisible to every check downstream. The adversarial corpus bounds this for phrasings that have been seen. It says nothing about phrasings that have not.
+- **A draft can be true and still misleading.** The whole-draft checks catch inconsistent itemisations and missing content. They cannot catch a draft that misleads by emphasis or by leaving out context that no checklist names. One live example of this class is caught. The class in general is not closable at the claim level.
+- **The calibration is a signal, not a certificate.** 16 items, labelled by one person, who is also the person who built the system. The confidence interval is wide and is printed next to the number.
+- **The before and after runs are small.** Six held-out scenarios, one sample each. The claim rests on the direction being the same across every instrument (claim count, behaviour markers, judge preference), not on statistical significance.
+- **Synthetic books are clean books.** No OCR noise, no mid-period corrections, no disputed invoices. Every catch rate here is a best case, not an expected real-world rate.
 
-## If I had another day
+### If I had another day
 
-I would spend the morning on the extractor's recall, because it is the one place where a miss is silent. The current detector is a set of hand-built patterns with a regression corpus; I would add a second, independent detector pass (a small model prompted only to list every number and reference it can see in the draft, with its output used purely as a recall probe, never as verification) and measure the disagreement rate between the two detectors on live drafts. Where the model detector finds spans the code detector missed, each one is either a new pattern to add or a new named blind spot. That turns the extractor's coverage from asserted into measured, which is the same move the rest of the system already makes.
+The morning would go to extractor recall, because that is the one place where a miss is silent. Today the detector is a set of hand-written patterns with a regression corpus behind it. I would add a second, independent detector: a small model asked only to list every number and reference it can see in the draft. Its output would be used purely as a recall probe, never as verification. Then I would measure how often the two detectors disagree on live drafts. Every span the model finds and the code misses is either a new pattern to add or a newly named blind spot. That turns extractor coverage from something asserted into something measured, which is what the rest of the system already does.
 
-The afternoon would go to the learning loop's next time constant. Retrieval memory adapts within known ledger structures, and the capability-gap log already says where the agent is blind; the missing piece is promotion. A recurring edit pattern should graduate from retrieved example to a standing rule in the prompt, and a recurring gap category should open a tool request. Both promotions are threshold rules over records the system already writes, so the day would produce a small, fully automatic policy: when the same correction appears in three consecutive approved edits, append it to the drafting instructions and log the change with the evidence that earned it.
+The afternoon would go to promotion in the learning loop. Retrieval adapts within ledger structures the system has already seen, and the capability-gap log already records where the agent is blind. What is missing is promotion. A correction that keeps recurring should graduate from a retrieved example into a standing rule in the prompt, and a gap category that keeps recurring should open a tool request. Both are threshold rules over records the system already writes. The rule would be simple: when the same correction appears in three consecutive approved edits, append it to the drafting instructions and log the change together with the evidence that earned it.
 
-## One idea you did not ask for
+### One idea you did not ask for
 
-The capability-gap log is a product roadmap generator. Every abstention already records its category, what was missing, and who could resolve it. Aggregated across a firm's clients, that log ranks, with evidence, the next thing to build: five abstentions for missing remittance advice is a case for a client-facing "which invoice is this payment for" link in the reminder email; a cluster of document-absent gaps is a case for a document-request integration. The same loop that improves drafts can decide what the engineering team ships next quarter, and it arrives with its own justification attached.
+The capability-gap log is a product roadmap generator. Every time the agent abstains it already records the category, what was missing, and who could supply it. Aggregate that across a firm's whole client base and it ranks, with evidence attached, the next thing worth building. Five abstentions for missing remittance advice is a case for putting a "which invoice is this payment for" link in the reminder email. A cluster of missing-document gaps is a case for a document-request integration. The same loop that improves the drafts can tell the engineering team what to build next quarter, and the justification comes with it.
 
-## Running live
+## 8. Running locally
+
+No model and no credentials needed:
+
+```bash
+python3 -m venv .venv && ./.venv/bin/pip install -e ".[dev]"
+make fixtures   # build the 12 synthetic client scenarios
+make demo       # run the full draft-verify-decide loop in stub mode
+make test       # 388 tests
+```
+
+The demo shows both ends of the loop. One clean scenario reaches the human gate. One scenario whose records are genuinely unclear is refused, and the agent records exactly what it would need in order to proceed.
+
+To run against a real model:
 
 ```bash
 cp .env.example .env   # point BC_BASE_URL at any OpenAI-compatible endpoint
@@ -385,11 +463,63 @@ make bench-judge bench-agree bench-pairwise
 make report readme
 ```
 
-Developed against a self-hosted Qwen3.6-35B-A3B (about 3 billion active parameters) via vLLM. The design does not lean on a frontier model: every trust-bearing check is code, and a larger model would only be a fallback for drafting quality, not for verification.
+All client data is synthetic. No real client data is used anywhere in this repository.
+
+Developed against a self-hosted Qwen3.6-35B-A3B (about 3 billion active parameters) served with vLLM. The design does not depend on a frontier model. Every check that carries trust is code. A larger model would only improve drafting style, not verification.
+
+## 9. Full generated evidence
+
+Everything below is produced from the append-only event log. `make report` regenerates it, and a test compares the regenerated output against what is committed here, so hand-edited numbers fail the build.
+
+### Where the agent is blind
+
+Every abstention records why. These records are a product backlog, not log noise.
+
+<!-- BC:BEGIN capability_gaps -->
+# Capability gaps
+
+| category | count | gen_ids |
+|---|---|---|
+| allocation_reference | 5 | errors-S-A-06-r0, poolA-S-A-06-r0, pass1-S-B-06-r0, pass2-S-B-06-r0, pass2R-S-B-06-r0 |
+
+Total capability gaps: 5.
+<!-- BC:END capability_gaps -->
+
+Five abstentions all trace to the same cause: a payment arrived with no indication of which invoice it pays. The fix is not a model change. It is asking clients to send remittance advice.
+
+### Model call reliability
+
+<!-- BC:BEGIN trace_stats -->
+# Trace stats
+
+| task | attempts | ok | ok rate |
+|---|---|---|---|
+| draft | 23 | 23 | 100% |
+| judge_pairwise | 10 | 10 | 100% |
+| judge_rubric | 16 | 16 | 100% |
+| verify_fuzzy | 2 | 2 | 100% |
+
+Structured-parse failures: 0
+Total trace lines: 51
+<!-- BC:END trace_stats -->
+
+Zero malformed responses across every judge and verifier call. Structured outputs use JSON-schema constrained decoding at the endpoint, which makes malformed JSON very unlikely at the decoder itself. A validate-and-retry fallback sits behind that in the client. It was never needed.
+
+### What is held fixed between runs
+
+The before and after runs differ in exactly one thing: the memory snapshot and the retrieved examples it produces. The model, the seed, the evaluation fixtures, the static prompt files, and the configuration are all held fixed, and every run manifest records them. The manifests also record the run id, the pass label, and the retrieval mode, which necessarily differ between runs.
+
+The model is pinned by the identifier the endpoint serves. That endpoint does not expose a content digest, so this is an identifier, not a hash. It is a weaker guarantee than a hash and is stated as such.
 
 ## References
 
-- Cohen, J. (1960). A coefficient of agreement for nominal scales. Educational and Psychological Measurement. The agreement statistic used for judge calibration.
-- Landis, J.R. and Koch, G.G. (1977). The measurement of observer agreement for categorical data. Biometrics. The conventional interpretation bands for that statistic.
-- Zheng, L. et al. (2023). Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena. The position-bias failure mode defended against here by scoring both orderings and counting disagreements as ties.
-- Madaan, A. et al. (2023). Self-Refine: Iterative Refinement with Self-Feedback. The revise-and-recheck pattern, used here with code rather than the model as the critic.
+| Paper | Authors | Venue | Why it matters here |
+|---|---|---|---|
+| MiniCheck: Efficient Fact-Checking of LLMs on Grounding Documents | Tang, Laban, Durrett | EMNLP 2024 | Motivates checking each claim against evidence and reporting balanced accuracy. BALANCECHECK replaces the learned fact-checker with deterministic ledger checks wherever the claim can be computed. |
+| FActScore: Fine-grained Atomic Evaluation of Factual Precision in Long Form Text Generation | Min et al. | EMNLP 2023 | Motivates splitting generated text into individually checkable claims and measuring what share of them a trusted source supports. |
+| Chain-of-Verification Reduces Hallucination in Large Language Models | Dhuliawala et al. | Findings of ACL 2024 | Motivates keeping verification separate from generation. The fuzzy verifier here sees one claim and the matching records, never the surrounding draft. |
+| G-Eval: NLG Evaluation using GPT-4 with Better Human Alignment | Liu et al. | EMNLP 2023 | Motivates structured LLM evaluation with separate criteria. The judge emits schema-constrained scores for tone, clarity, and overall acceptability. |
+| Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena | Zheng et al. | NeurIPS 2023, Datasets and Benchmarks Track | Motivates testing both presentation orders in pairwise judging and treating an order-dependent disagreement as a tie rather than a real preference. |
+| Evaluating Evaluation Metrics: The Mirage of Hallucination Detection | Kulkarni et al. | Findings of EMNLP 2025 | Motivates temperature-zero decoding, caution about cheap automatic faithfulness metrics, and calibrating the LLM judge against human labels. |
+| SelfCheckGPT: Zero-Resource Black-Box Hallucination Detection for Generative Large Language Models | Manakul, Liusie, Gales | EMNLP 2023 | The sampling-based self-consistency approach used here as a contrast. BALANCECHECK does not infer truth from agreement between repeated generations. |
+| Too Consistent to Detect: A Study of Self-Consistent Errors in LLMs | Tan et al. | EMNLP 2025 | Shows that confidently repeated errors can slip past consistency-based detectors. This supports checking every computable claim against external ledger truth instead. |
