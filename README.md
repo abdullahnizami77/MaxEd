@@ -430,7 +430,7 @@ The tool ceiling also binds those deterministic fetches, so a recovery can never
 - **The before and after runs are small.** Six held-out scenarios, one sample each. The claim rests on the direction being the same across every instrument (claim count, behaviour markers, judge preference), not on statistical significance.
 - **Synthetic books are clean books.** No OCR noise, no mid-period corrections, no disputed invoices. Every catch rate here is a best case, not an expected real-world rate.
 
-### Further ideas I would like to explore
+### Further ideas I would like to explore ("if I had another day")
 
 There are a few areas where I would like to take this project further:
 
@@ -440,7 +440,7 @@ There are a few areas where I would like to take this project further:
 * **Turn repeated gaps into tool requests.** When the same missing information repeatedly causes abstention or escalation, the system could suggest a new tool or integration that would help resolve it.
 * **Test on harder and more realistic records.** The current fixtures are controlled and synthetic. A useful next step would be testing the system with noisier records, disputed invoices, corrections and incomplete payment references.
 
-### Gaps I would love to work on in future
+### Gaps I would love to work on in future ("One idea we did not ask for")
 
 These are some broader ideas that came out of building the system:
 
@@ -481,7 +481,45 @@ make report readme
 
 All client data is synthetic. No real client data is used anywhere in this repository.
 
-Developed against a self-hosted Qwen3.6-35B-A3B (about 3 billion active parameters) served with vLLM. The design does not depend on a frontier model. Every check that carries trust is code. A larger model would only improve drafting style, not verification.
+### Serving the model
+
+The model ran in its own container, in parallel with this repository. Nothing in this repo starts or manages it. The repo only speaks HTTP to it.
+
+```bash
+# in the model container
+vllm serve Qwen/Qwen3.6-35B-A3B \
+  --host 0.0.0.0 \
+  --port 6006 \
+  --served-model-name Qwen/Qwen3.6-35B-A3B \
+  --max-model-len 210000 \
+  --gpu-memory-utilization 0.90
+```
+
+```bash
+# in this repo, pointing at that container
+export BC_MODE=live
+export BC_BASE_URL=http://<model-host>:6006/v1
+export BC_MODEL=Qwen/Qwen3.6-35B-A3B
+```
+
+Two request options are sent by the client and matter for reproducing the numbers. `chat_template_kwargs: {"enable_thinking": false}` turns off the thinking block, so the reply is the answer and nothing else. `response_format: json_schema` makes the server constrain decoding to the schema, which is why the structured-parse failure count is zero.
+
+The model is Qwen3.6-35B-A3B: 35 billion total parameters with about 3 billion active per token, since it is a mixture-of-experts model. The design does not depend on a frontier model. Every check that carries trust is code. A larger model would only improve drafting style, not verification.
+
+### Third-party components
+
+Every third-party dependency is open source under an OSI-approved permissive licence, and none of it is copied into this repository. The full list, with versions and licences read from the installed package metadata, is in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
+| Component | Licence | Role |
+|---|---|---|
+| pydantic | MIT | Typed contracts for every record and event |
+| jsonschema | MIT | Validating tool arguments and structured output |
+| httpx | BSD-3-Clause | HTTP client for the model endpoint |
+| pytest | MIT | The test suite |
+| vLLM | Apache-2.0 | Serves the model, runs as a separate container |
+| Qwen/Qwen3.6-35B-A3B | Apache-2.0 | The model itself, not redistributed here |
+
+One transitive dependency, `certifi`, is MPL-2.0 rather than MIT or BSD. It is used unmodified and is not redistributed here, so nothing in this repository picks up a share-alike obligation. It is named in the notices file rather than left implied.
 
 ## 9. Full generated evidence
 
