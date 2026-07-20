@@ -428,15 +428,27 @@ The tool ceiling also binds those deterministic fetches, so a recovery can never
 - **The before and after runs are small.** Six held-out scenarios, one sample each. The claim rests on the direction being the same across every instrument (claim count, behaviour markers, judge preference), not on statistical significance.
 - **Synthetic books are clean books.** No OCR noise, no mid-period corrections, no disputed invoices. Every catch rate here is a best case, not an expected real-world rate.
 
-### If I had another day
+### Further ideas I would like to explore
 
-The morning would go to extractor recall, because that is the one place where a miss is silent. Today the detector is a set of hand-written patterns with a regression corpus behind it. I would add a second, independent detector: a small model asked only to list every number and reference it can see in the draft. Its output would be used purely as a recall probe, never as verification. Then I would measure how often the two detectors disagree on live drafts. Every span the model finds and the code misses is either a new pattern to add or a newly named blind spot. That turns extractor coverage from something asserted into something measured, which is what the rest of the system already does.
+There are a few areas where I would like to take this project further:
 
-The afternoon would go to promotion in the learning loop. Retrieval adapts within ledger structures the system has already seen, and the capability-gap log already records where the agent is blind. What is missing is promotion. A correction that keeps recurring should graduate from a retrieved example into a standing rule in the prompt, and a gap category that keeps recurring should open a tool request. Both are threshold rules over records the system already writes. The rule would be simple: when the same correction appears in three consecutive approved edits, append it to the drafting instructions and log the change together with the evidence that earned it.
+* **Improve claim extraction.** The current extractor uses hand-written patterns. I would add a second lightweight model that only identifies numbers, dates and document references in the draft. It would not verify anything, but it could highlight claims that the code extractor may have missed.
+* **Measure extractor coverage.** I would compare the claims found by the code extractor and the model-based extractor. Any disagreement could become either a new extraction rule or a clearly documented limitation.
+* **Turn repeated edits into drafting rules.** At the moment, approved and edited replies are stored as examples. If the same correction appears several times, the system could promote it into a permanent drafting instruction instead of relying on retrieval every time.
+* **Turn repeated gaps into tool requests.** When the same missing information repeatedly causes abstention or escalation, the system could suggest a new tool or integration that would help resolve it.
+* **Test on harder and more realistic records.** The current fixtures are controlled and synthetic. A useful next step would be testing the system with noisier records, disputed invoices, corrections and incomplete payment references.
 
-### One idea you did not ask for
+### Gaps I would love to work on in future
 
-The capability-gap log is a product roadmap generator. Every time the agent abstains it already records the category, what was missing, and who could supply it. Aggregate that across a firm's whole client base and it ranks, with evidence attached, the next thing worth building. Five abstentions for missing remittance advice is a case for putting a "which invoice is this payment for" link in the reminder email. A cluster of missing-document gaps is a case for a document-request integration. The same loop that improves the drafts can tell the engineering team what to build next quarter, and the justification comes with it.
+These are some broader ideas that came out of building the system:
+
+* **Use capability gaps as a product roadmap.** Every abstention already records what was missing and what could have helped. Across many clients, these records could show which integration or feature would create the most value.
+* **Use recurring human edits as team knowledge.** Common reviewer corrections could gradually become shared drafting guidance, so the system improves from the decisions of the whole accounting team.
+* **Create automatic requests for missing information.** For example, if payments repeatedly arrive without an invoice reference, the system could prepare a message asking the client which invoice the payment should be applied to.
+* **Build a reviewer dashboard.** A simple dashboard could show which drafts need attention, why they were stopped, which checks failed and which capability gaps occur most often.
+* **Track improvement over a longer period.** Instead of comparing only two batches, the same evaluation could be repeated over several weeks to show whether the system continues to improve or reaches a plateau.
+
+These ideas are not part of the current implementation, but they are natural extensions of the event log, human feedback and capability-gap data that the system already collects.
 
 ## 8. Running locally
 
