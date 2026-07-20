@@ -1,4 +1,4 @@
-# BALANCECHECK: every gate is a command, not a vibe.
+# Maxed Verify: every gate is a command, not a vibe.
 #
 # Stub mode is the default and needs zero credentials. Live mode reads
 # BC_MODE=live, BC_BASE_URL, BC_MODEL from the environment (or a local
