@@ -66,3 +66,6 @@ report:
 
 readme: report
 	$(PY) -m balancecheck.cli readme-inject
+
+diagram:
+	$(PY) docs/make_system_flowchart.py

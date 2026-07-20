@@ -17,7 +17,8 @@ What this module guarantees:
 - Budgets are enforced in code, never trusted to the model: at most
   cfg.agentic_max_rounds tool rounds plus one forced final LLM call, at most
   min(3, cfg.agentic_max_calls_per_round) calls per round, and at most
-  cfg.agentic_max_total_tool_calls executed tool calls in total. Structural
+  cfg.agentic_max_total_tool_calls tool executions in total (the ceiling
+  binds forced coverage too, not only model-chosen calls). Structural
   step rules (kind "tool_calls" needs an empty draft and at least one call;
   kind "final" needs no calls and a non-empty draft) are re-checked here
   even though the schema already constrains decoding.
@@ -187,7 +188,7 @@ def _required_evidence(ledger: Ledger, failed_subject_ids: list[str]) -> list[_R
             required.append(
                 _RequiredCall(
                     "get_invoice",
-                    {"id": doc_id},
+                    {"invoice_id": doc_id},
                     f"get_invoice({doc_id})",
                     "this document failed verification",
                 )
@@ -196,7 +197,7 @@ def _required_evidence(ledger: Ledger, failed_subject_ids: list[str]) -> list[_R
             required.append(
                 _RequiredCall(
                     "get_source",
-                    {"id": doc_id},
+                    {"source_id": doc_id},
                     f"get_source({doc_id})",
                     "this document failed verification",
                 )
@@ -213,7 +214,10 @@ def _satisfied(req: _RequiredCall, successes: list[tuple[str, dict[str, Any]]]) 
     """
     if not req.arguments:
         return any(name == req.name for name, _args in successes)
-    wanted = str(req.arguments.get("id", "")).upper()
+    # The requirement's argument is the single document ID, whatever the key;
+    # a model call matches if the same ID appears among its argument values,
+    # so a differently keyed but accepted call still counts.
+    wanted = next((str(v).upper() for v in req.arguments.values() if str(v)), "")
     for name, args in successes:
         if name != req.name:
             continue
@@ -248,8 +252,10 @@ class _ToolSession:
         self.transcript: list[dict[str, Any]] = []
         self.successes: list[tuple[str, dict[str, Any]]] = []
         self.cache: dict[tuple[str, str], dict[str, Any]] = {}
-        self.budget_used = 0        # executed model-chosen calls (cache hits excluded)
-        self.executed_count = 0     # executor invocations, forced coverage included
+        # One hard ceiling on executor invocations, model-chosen and forced
+        # coverage alike (cache hits excluded), so the total-tool budget is a
+        # real invariant: at most agentic_max_total_tool_calls executions.
+        self.executed_count = 0
         self.attempts = 0           # every attempt, one ToolCallEvent each
 
     def note(self, text: str) -> None:
@@ -287,12 +293,13 @@ class _ToolSession:
                 data["cached"] = True
                 result = {"ok": True, "data": data}
                 ok = True
-            elif not forced and self.budget_used >= self.cfg.agentic_max_total_tool_calls:
+            elif self.executed_count >= self.cfg.agentic_max_total_tool_calls:
+                # The ceiling binds forced coverage too: a recovery whose
+                # model burned the whole budget cannot force extra evidence,
+                # so total executions never exceed the configured maximum.
                 error = "total tool budget exhausted"
                 result = {"ok": False, "error": error}
             else:
-                if not forced:
-                    self.budget_used += 1
                 self.executed_count += 1
                 try:
                     raw = self.executor(tool_name, args, self.ledger)
@@ -511,7 +518,7 @@ def generate_agentic_revision(
             rounds_remaining=total_rounds - round_index,
             calls_per_round=calls_per_round,
             total_calls_remaining=max(
-                0, cfg.agentic_max_total_tool_calls - session.budget_used
+                0, cfg.agentic_max_total_tool_calls - session.executed_count
             ),
             forced_final=False,
         )
@@ -550,15 +557,32 @@ def generate_agentic_revision(
             )
 
     # Rounds exhausted: force-execute the missing required evidence in code
-    # (round_index -1), then demand the final draft.
+    # (round_index -1), then demand the final draft. Only a call that
+    # SUCCEEDS counts as forced coverage; a forced call that fails leaves the
+    # requirement unmet.
     coverage_forced: list[str] = []
     forced_index = 0
     for req in required:
         if _satisfied(req, session.successes):
             continue
-        session.attempt(req.name, req.arguments, -1, forced_index, forced=True)
-        coverage_forced.append(req.name)
+        ok = session.attempt(req.name, req.arguments, -1, forced_index, forced=True)
+        if ok:
+            coverage_forced.append(req.name)
         forced_index += 1
+
+    # If required evidence is still missing after the deterministic backstop
+    # (it could not be gathered, or the budget ceiling blocked it), the draft
+    # cannot be grounded: fail the recovery rather than accept an ungrounded
+    # final. The caller escalates to a human.
+    if missing_labels():
+        return AgenticResult(
+            text="",
+            steps=steps,
+            tool_calls_executed=session.executed_count,
+            forced_final=True,
+            coverage_forced=coverage_forced,
+            prompt_sha="",
+        )
 
     prompt = _build_step_prompt(
         previous_draft,

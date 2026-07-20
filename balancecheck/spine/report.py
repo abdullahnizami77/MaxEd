@@ -749,7 +749,13 @@ def agentic_recovery_table(raw_dir: Path) -> str:
     a_rec = sum(1 for r in rows if r["agentic_recovered"])
     tools_total = sum(r["agentic_tool_calls"] for r in rows)
     calls_total = sum(r["agentic_llm_calls"] for r in rows)
-    forced = sum(1 for r in rows if r["agentic_forced_final"])
+    forced_final = sum(1 for r in rows if r["agentic_forced_final"])
+    coverage_forced = sum(1 for r in rows if r.get("agentic_coverage_forced", 0) > 0)
+    self_sufficient = sum(
+        1
+        for r in rows
+        if r["agentic_forced_final"] and r.get("agentic_coverage_forced", 0) == 0
+    )
     lines.append("")
     lines.append(f"Recovery rate: prompt {_ratio(p_rec, n)}, agentic {_ratio(a_rec, n)}.")
     lines.append(
@@ -759,10 +765,19 @@ def agentic_recovery_table(raw_dir: Path) -> str:
         f" {(10 * tools_total) // n / 10 if n else 0} tools per recovery on average)."
     )
     lines.append(
-        f"Forced-final rate: {_ratio(forced, n)}. A forced final means the model did"
-        " not gather sufficient evidence unaided and the orchestrator executed the"
-        " missing required tools deterministically before demanding the final draft:"
-        " it is the honest measure of how much of the agency is the model's own."
+        f"Forced-final rate: {_ratio(forced_final, n)}. A forced final means the model"
+        " used both tool rounds without returning an acceptable final draft, so the"
+        " guaranteed third call was made to extract it. It does NOT by itself mean the"
+        " evidence was missing (see the next line)."
+    )
+    lines.append(
+        f"Coverage-forced rate: {_ratio(coverage_forced, n)}. This counts recoveries"
+        " where the model failed to gather a REQUIRED tool result and the orchestrator"
+        " executed it deterministically; it is the honest measure of how much of the"
+        " agency is the model's own. Of the forced finals, "
+        f"{self_sufficient} had gathered all required evidence themselves"
+        " (coverage-forced zero) and simply used the full round budget before"
+        " finalizing."
     )
     lines.append(
         f"Cost framing: the prompt arm spends 1 LLM call per recovery; the agentic"
