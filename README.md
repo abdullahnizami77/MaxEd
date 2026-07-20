@@ -332,6 +332,8 @@ During the live run this cross-check did find something. The oracle failed to re
 
 The main loop uses one cheap model call per draft, over figures code has already computed. That is the fast path and it is the default.
 
+**The agentic loop only runs in the revision step.** A draft that passes every check never touches it, so the normal path stays at one model call and zero tool calls. This keeps the system compute-light: the expensive tool-using path is spent only on the drafts that actually failed a check.
+
 There is an optional second path, switched on with `BC_REVISION_MODE=agentic`. It spends more model effort, and only after the gate has already found a fixable error. In that mode the model may call six read-only accounting tools to look up ledger evidence for itself:
 
 | Tool | Returns |
